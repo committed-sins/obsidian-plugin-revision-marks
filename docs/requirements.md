@@ -1,0 +1,31 @@
+# Requirements and acceptance criteria
+
+## Session boundaries
+
+A session starts with an actual content change and ends when the user leaves/closes the note, explicitly saves, quits Obsidian, or backgrounds/unfocuses the mobile activity. Autosave alone does not end a session. Continuing after an explicit save starts another session. Switching between two views of the same note is not a boundary.
+
+## Content and metadata
+
+Compare parsed frontmatter and the complete note body. Ignore only the two configured managed properties, frontmatter key order and line-ending convention. Preserve body whitespace as meaningful. A complete undo and metadata-only edits to the managed properties must produce no timestamp/counter write.
+
+Default output is `updated` plus one `updated_count` increment. Use the saved file's local mtime before our own metadata write. Creation dates remain outside the initial plugin scope. Invalid YAML or counters must fail without destructive rewriting.
+
+## Input sources
+
+Support full Markdown editor input, Bases, the Properties editor and external file changes. Exclusions must be configurable; the vault root may remain eligible.
+
+For external changes, require a known content baseline. If content changed while both managed fields remained unchanged, schedule an update using local mtime. If either field already changed, accept the incoming stamp without a second increment. The first observation of an unknown file establishes a baseline rather than inventing a historical edit.
+
+## Reliability
+
+- Write timestamp and counter together, once per changed completed session.
+- Persist a write intention before the metadata commit and recognize completed intentions after restart.
+- Do not overwrite divergent, dirty or stale editor buffers.
+- Recheck for edits arriving during completion.
+- Await normal quit work when Obsidian provides that opportunity; retain recovery for interruptions.
+- Treat Android backgrounding as best effort, not a guarantee against immediate process termination.
+- Do not claim atomic multi-device counters or that copied filesystem timestamps always represent human edit time.
+
+## Initial non-goals
+
+No revision-content history, remote service, analytics, creation-date replacement, encryption, Excalidraw/Canvas-specific integration, or arbitrary command execution from note content. Additional completion actions need a separate design.
