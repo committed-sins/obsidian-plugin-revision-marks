@@ -1,0 +1,21 @@
+{
+  "name": "obsidian-plugin-session-marks",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Content-aware editing sessions, timestamps and revision counts for Obsidian.",
+  "license": "UNLICENSED",
+  "author": "Michael J. Stallinger",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/committed-sins/obsidian-plugin-session-marks.git"
+  },
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test",
+    "check": "npm run build && npm test",
+    "deploy": "npm run check && node scripts/deploy.mjs"
+  },
+  "devDependencies": { "esbuild": "0.28.2" }
+}

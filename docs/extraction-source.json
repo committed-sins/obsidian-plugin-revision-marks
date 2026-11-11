@@ -1,0 +1,41 @@
+{
+  "capturedAt": "2026-11-11T14:27:35.436Z",
+  "source": "Continuum internal edit-session helper",
+  "files": [
+    {
+      "path": "scripts/maintenance/edit-sessions.mjs",
+      "sha256": "434da4a95bc4b263dae16707888796cf25e044d6c373d6f9600dd375394d262f"
+    },
+    {
+      "path": "scripts/maintenance/edit-sessions.md",
+      "sha256": "bbff9df27fe61a04ffecae602482ddee75404a542a22df39a862d2f44985d412"
+    },
+    {
+      "path": "scripts/startup.mjs",
+      "sha256": "eacd5fd05a3daa7927c217efc67f05ab960da68ea9d375cebbfd86446555c0df"
+    },
+    {
+      "path": "scripts/templater/ensureFmPropertyOrder.js",
+      "sha256": "21e024f2dd97e3a9f741c89f41c4344a5b69d55a76bf24164164b536ce98a087"
+    },
+    {
+      "path": "scripts/defines/orders.md",
+      "sha256": "efa2a9841ef1a672734a598d19dd4b50bf34bfe3ff8550b50bef63960f9fe388"
+    },
+    {
+      "path": "scripts/.dev/tests/edit-sessions.test.mjs",
+      "sha256": "0e42f2563df2802e2ae104ee6e5e42266087af31db780a27bdc13fa6b4c1ccf9"
+    },
+    {
+      "path": "scripts/.dev/tests/edit-sessions-runtime.test.mjs",
+      "sha256": "309646a05033f010daa5f5ee472c5c11c6416efb18e965d09f86d6819b2c3775"
+    }
+  ],
+  "changes": [
+    "Replace Toolkit lifecycle owner with the standalone plugin owner.",
+    "Use a separate session-marks device-local storage namespace; no implicit prototype-journal migration.",
+    "Inject excluded folders from plugin settings.",
+    "Replace the Templater ordering dependency with a bundled ordering helper.",
+    "Expose explicit completion commands through the returned runtime handle."
+  ]
+}

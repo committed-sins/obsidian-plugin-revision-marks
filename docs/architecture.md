@@ -10,15 +10,15 @@ The internal reference currently lives in Continuum:
 - `scripts/.dev/tests/edit-sessions.test.mjs`
 - `scripts/.dev/tests/edit-sessions-runtime.test.mjs`
 
-These paths document the source of the behavior; no vault files or user data have been copied into this repository. The internal implementation remains in place until an explicitly authorized, validated migration.
+The helper, synthetic tests and behavior specification were extracted into this repository. `extraction-source.json` records hashes of the source inputs. No personal notes, vault settings, recovery state or journals were copied. The internal implementation remains in place until an explicitly authorized, validated migration.
 
-## Proposed separation
+## Implemented extraction
 
-1. A testable session state machine for content comparison, boundaries and write intentions.
-2. Obsidian adapters for editor transactions, vault events, explicit save and lifecycle events.
-3. Device-local persistence for fingerprints and pending sessions, separate from synced plugin settings.
-4. A guarded metadata writer that verifies current content, fields and editor buffers.
-5. Settings and diagnostic commands for exclusions, managed properties and pending work.
+1. `src/edit-sessions.mjs` retains the state machine, guarded writer and editor/vault/lifecycle integration from the current helper.
+2. `src/plugin.mjs` supplies a standalone Obsidian lifecycle owner, completion commands and settings UI. Runtime restarts await cleanup; each plugin instance owns its editor extension.
+3. Device-local state uses `session-marks.v1:<vault path/name>` and its `:baselines` companion, isolated from the prototype and synced settings.
+4. `src/frontmatter-order.mjs` bundles the reference order and reorders only when managed properties are first added. It has no Templater or metadata-note dependency.
+5. Exclusions and initial property ordering are configurable. Managed property names remain `updated` and `updated_count` for the first preview.
 
 ## Decisions to retain
 
@@ -33,7 +33,7 @@ These paths document the source of the behavior; no vault files or user data hav
 ## Decisions requiring validation
 
 - The prototype wraps the internal `editor:save-file` command because no public post-save event was identified. Confirm compatibility and a safe failure mode.
-- Select standalone storage with explicit per-device behavior, bounded size, format versioning and migration from the prototype.
+- Retained localStorage has explicit namespacing and existing format versions. Size limits, recovery UI and an explicit prototype-state migration remain future work; do not silently import state.
 - Validate multiple windows, dirty editor buffers, Properties/Bases changes and mobile activity transitions on real clients.
 - Define conflict visibility and recovery commands before exposing unresolved journal entries to general users.
 - Establish supported Obsidian versions and acceptable mobile startup overhead.

@@ -8,3 +8,4 @@
 - Use synthetic fixtures for tests. Cover complete undo, properties, external writes, multiple editors, interruption/recovery and concurrent changes.
 - Do not deploy to a vault, migrate notes or publish a release without user authorization.
 - Static tests and simulated lifecycle events do not establish real desktop or Android behavior. Report live validation separately.
+- Run `npm ci` and `npm run check` for a fresh checkout. Deploy only to the explicitly authorized target through `OBSIDIAN_VAULT` or an ignored `.env.local`; deployment must preserve settings and activation state.

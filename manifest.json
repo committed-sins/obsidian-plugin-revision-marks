@@ -1,0 +1,10 @@
+{
+  "id": "session-marks",
+  "name": "Session Marks",
+  "version": "0.1.0",
+  "minAppVersion": "1.15.0",
+  "description": "Track meaningful editing sessions and update frontmatter timestamps and revision counts when work is done.",
+  "author": "Committed Sins",
+  "authorUrl": "https://github.com/committed-sins",
+  "isDesktopOnly": false
+}
