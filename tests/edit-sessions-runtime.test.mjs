@@ -8,7 +8,7 @@ const info = text => {
 };
 const note = (body, count = 4) => `---\n${JSON.stringify({ updated_count: count, id: "kept" })}\n---\n${body}`;
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-test("editor integration counts only full-note user input; leaving saves and commits once, without writes while active", async () => {
+test("editor integration counts only full-note user input; leaving commits native-saved content once", async () => {
     const priorStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
     const journal = new Map();
     Object.defineProperty(globalThis, "localStorage", { configurable: true, value: {
@@ -22,7 +22,7 @@ test("editor integration counts only full-note user input; leaving saves and com
     const file = { path: "notes/A.md" };
     let active = file, disk = note("before"), buffer = disk, writes = 0, saves = 0, extension, registrations = 0;
     const notices = [];
-    const view = { file, editor: { getValue: () => buffer }, save: async () => { saves++; disk = buffer; } };
+    const view = { file, editor: { getValue: () => buffer }, getViewData: () => buffer, save: async () => { saves++; disk = buffer; } };
     const app = {
         commands: { commands: { "editor:save-file": { callback: () => view.save() } } },
         plugins: { plugins: { "session-marks": { registerEditorExtension: value => { extension = value; registrations++; } } } },
@@ -58,7 +58,7 @@ test("editor integration counts only full-note user input; leaving saves and com
         assert.equal(writes, 0);
         active = { path: "notes/B.md" };
         callbacks.get("workspace:active-leaf-change")(); await wait(220);
-        assert.equal(writes, 1); assert.ok(saves >= 2);
+        assert.equal(writes, 1); assert.equal(saves, 1, 'only the native save writes the body');
         assert.equal(JSON.parse(info(disk).frontmatter).updated_count, 5);
         assert.equal(JSON.parse(info(disk).frontmatter).id, "kept");
         assert.deepEqual(Object.keys(JSON.parse(info(disk).frontmatter)), ["created", "updated", "updated_count", "id"]);
@@ -74,7 +74,7 @@ test("editor integration counts only full-note user input; leaving saves and com
     assert.equal(callbacks.size, 0);
 });
 
-test("save command, Bases/properties, awaited quit and Android background events complete changed sessions", async () => {
+test("save command and Bases/properties complete sessions; quit and Android background defer metadata safely", async () => {
     const originals = new Map(["localStorage", "document", "window"].map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
     const journal = new Map(), callbacks = new Map(), domCallbacks = new Map();
     const emitter = prefix => ({
@@ -92,7 +92,7 @@ test("save command, Bases/properties, awaited quit and Android background events
     const file = { path: "notes/A.md", stat: { mtime: 1700000000000 } };
     let active = file, disk = note("before"), buffer = disk, extension, writes = 0;
     const fm = () => JSON.parse(info(disk).frontmatter);
-    const view = { file, editor: { getValue: () => buffer }, save: async () => {
+    const view = { file, editor: { getValue: () => buffer }, getViewData: () => buffer, save: async () => {
         if (buffer !== disk) { disk = buffer; file.stat.mtime += 1000; }
     } };
     const originalSave = checking => { if (!checking) void view.save(); return true; };
@@ -145,21 +145,31 @@ test("save command, Bases/properties, awaited quit and Android background events
         assert.equal(fm().updated_count, 7);
         command.checkCallback(false); await wait(60); assert.equal(fm().updated_count, 7);
         edit("before quit");
+        await view.save();
         const tasks = [];
         callbacks.get("workspace:quit")({ add: fn => tasks.push(fn()) });
-        await Promise.all(tasks); assert.equal(fm().updated_count, 8);
+        await Promise.all(tasks); assert.equal(fm().updated_count, 7);
+        await stop();
+        stop = startEditSessions(app, { ...api, owner: app.plugins.plugins["session-marks"] });
+        await wait(60); assert.equal(fm().updated_count, 8, 'restart recovers the pending session');
         edit("before hiding"); document.visibilityState = "hidden";
+        await view.save();
         domCallbacks.get("document:visibilitychange")(); await wait(60);
+        assert.equal(fm().updated_count, 8);
+        document.visibilityState = 'visible'; domCallbacks.get('document:visibilitychange')(); await wait(60);
         assert.equal(fm().updated_count, 9);
-        edit("before Android blur"); domCallbacks.get("window:blur")(); await wait(60);
-        assert.equal(fm().updated_count, 10);
+        edit("before Android blur"); await view.save(); domCallbacks.get("window:blur")(); await wait(60);
+        assert.equal(fm().updated_count, 9);
         domCallbacks.get("window:pagehide")(); await wait(60);
+        domCallbacks.get('window:focus')(); await wait(60);
         assert.equal(fm().updated_count, 10, "duplicate lifecycle events do not double count");
         edit("before plugin cleanup without quit");
+        await view.save();
         await stop(); stop = undefined;
-        assert.equal(fm().updated_count, 11, "plugin cleanup completes a pending edit even when quit never fired");
+        assert.equal(fm().updated_count, 10, "plugin cleanup never writes notes");
         // Existing timestamps but no counter: create it in the central order, preserve custom values.
         stop = startEditSessions(app, { ...api, owner: app.plugins.plugins["session-marks"] });
+        await wait(60); assert.equal(fm().updated_count, 11);
         disk = buffer = `---\n${JSON.stringify({ id: "kept", created: "2026-01-01", updated: "older", tags: ["keep"], custom: { nested: true } })}\n---\nbefore counter`;
         edit("after counter"); command.checkCallback(false); await wait(60);
         assert.equal(fm().updated_count, 1);

@@ -49,7 +49,7 @@ test('standalone lifecycle waits for layout, supplies its own owner, and complet
 test('settings apply completes the old runtime before saving and starting the new rules', async () => {
     const f = fixture(); await f.plugin.onload(); await f.ready();
     await f.plugin.applySettings({ excludedFolders: ['private'], properties: { created: 'born', updated: 'touched', revision: 'updated_revision' } });
-    assert.deepEqual(f.events.map(event => event[0]), ['start', 'stop', 'save-settings', 'start']);
+    assert.deepEqual(f.events.map(event => event[0]), ['start', 'complete', 'stop', 'save-settings', 'start']);
     assert.deepEqual(f.events.at(-1)[1].excludedFolders, ['private']);
     assert.deepEqual(f.events.at(-1)[1].properties, { created: 'born', updated: 'touched', revision: 'updated_revision' });
     await f.plugin.onunload();
@@ -58,6 +58,16 @@ test('settings apply completes the old runtime before saving and starting the ne
 test('unloading before layout does not start a late writer', async () => {
     const f = fixture(); await f.plugin.onload(); await f.plugin.onunload(); await f.ready();
     assert.equal(f.events.length, 0);
+});
+
+test('unload invalidates the runtime synchronously before awaiting restart work', async () => {
+    const f = fixture(); await f.plugin.onload(); await f.ready();
+    let release;
+    f.plugin.restartQueue = new Promise(resolve => { release = resolve; });
+    const unloading = f.plugin.onunload();
+    assert.deepEqual(f.events.at(-1), ['stop']);
+    assert.equal(f.plugin.runtime, null);
+    release(); await unloading;
 });
 
 test('invalid settings fail without starting or overwriting recovery state', async () => {
@@ -112,7 +122,7 @@ test('changing property names is refused while failed old sessions remain, and t
     f.plugin.runtime.pendingPaths = () => ['notes/Unfinished.md'];
     await assert.rejects(f.plugin.applySettings({ properties: { revision: 'updated_revision' } }), /Pending sessions remain/);
     assert.equal(f.plugin.settings.properties.revision, 'revision');
-    assert.deepEqual(f.events.map(event => event[0]), ['start', 'stop', 'start']);
+    assert.deepEqual(f.events.map(event => event[0]), ['start', 'complete', 'stop', 'start']);
     await f.plugin.onunload();
 });
 

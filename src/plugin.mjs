@@ -93,6 +93,8 @@ export function createPluginClass(api, startRuntime = startEditSessions) {
             // Finish under the old names and exclusions before changing the rules.
             const restart = this.restartQueue.then(async () => {
                 const previous = this.runtime;
+                await previous?.complete?.();
+                if (this.stopping) return;
                 this.runtime = null;
                 await previous?.();
                 if (previous?.pendingPaths?.().length && JSON.stringify(settings.properties) !== JSON.stringify(this.settings.properties)) {
@@ -110,10 +112,12 @@ export function createPluginClass(api, startRuntime = startEditSessions) {
         async onunload() {
             this.stopping = true;
             this.ready = false;
-            await this.restartQueue;
             const previous = this.runtime;
             this.runtime = null;
-            await previous?.();
+            // Obsidian need not await this hook. Invalidate the writer synchronously.
+            const checkpoint = previous?.();
+            await this.restartQueue;
+            await checkpoint;
         }
     };
 }

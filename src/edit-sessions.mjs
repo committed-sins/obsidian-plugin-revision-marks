@@ -247,12 +247,19 @@ export function startEditSessions(app, api) {
         owner.registerEditorExtension(api.EditorView.updateListener.of(update => slot.listener?.(update)));
     }
     const slot = owner[slotKey];
-    let stopped = false, checkpointTimer, leavingTimer, initializationTimer;
+    let stopped = false, closing = false, suspended = globalThis.document?.visibilityState === 'hidden';
+    let checkpointTimer, leavingTimer, initializationTimer;
+    const completionRequests = new Set();
+    const deferred = message => Object.assign(new Error(message), { code: 'SESSION_MARKS_DEFERRED' });
+    const assertRunning = () => {
+        if (stopped || closing || suspended) throw deferred('Session completion deferred until the app is active');
+    };
     let diskQueue = Promise.resolve();
     let flushQueue = Promise.resolve();
     const refs = [];
     const reported = new Set();
     const report = error => {
+        if (error?.code === 'SESSION_MARKS_DEFERRED') return;
         console.error("Session Marks", error);
         const message = `Edit sessions: ${error.message ?? error}`;
         if (!reported.has(message)) { reported.add(message); new api.Notice(message, 10000); }
@@ -272,39 +279,44 @@ export function startEditSessions(app, api) {
     const names = propertyNames(api);
     const storageKey = prepareSessionStorage(globalThis.localStorage,
         app.vault.adapter.getBasePath?.() ?? app.vault.getName(), names);
-    const saveViews = async path => {
-        const views = viewsFor(path);
-        const buffers = new Set(views.map(view => view.editor.getValue().replace(/\r\n?/g, "\n")));
-        if (buffers.size > 1) throw new Error(`${path} has divergent editor buffers; completion deferred`);
-        const disk = await app.vault.read(fileAt(path));
-        for (const view of views) {
-            const same = view.editor.getValue().replace(/\r\n?/g, "\n") === disk.replace(/\r\n?/g, "\n");
-            if (same || view.dirty === true || (tracker.hasEditorChanges(path) && view.dirty !== false)) await view.save();
+    // Never call TextFileView.save: its mode may already be cleared during unload,
+    // even while editor.getValue() still exposes the previous full document.
+    const waitForNativeSave = async path => {
+        assertRunning();
+        for (const view of viewsFor(path)) {
+            while (view.savePromise) { await view.savePromise; assertRunning(); }
+        }
+    };
+    const checkViews = (path, disk, comparisonVersion) => {
+        assertRunning();
+        const comparable = text => comparisonVersion === undefined ? text.replace(/\r\n?/g, '\n') : comparableContent(text, api, comparisonVersion);
+        for (const view of viewsFor(path)) {
+            if (view.dirty === true || view.savePromise || view.data === null || view.lastSavedData === null ||
+                typeof view.getViewData !== 'function' || comparable(view.getViewData()) !== comparable(disk) ||
+                comparable(view.editor.getValue()) !== comparable(disk)) {
+                throw deferred(`${path} has unsaved, detached or stale view content; completion deferred`);
+            }
         }
     };
     const tracker = createSessionTracker({
         api, storage: globalThis.localStorage, storageKey, isActive: blocked, report, isEligible: eligible,
         exists: path => Boolean(fileAt(path)),
-        read: async (path, { saveEditors = true } = {}) => {
-            if (saveEditors) await saveViews(path);
+        read: async path => {
+            await waitForNativeSave(path);
             const file = fileAt(path);
             const text = await app.vault.read(file);
+            checkViews(path, text);
             return { text, mtime: file.stat?.mtime };
         },
         write: async (path, intent, expected, expectedHash, context) => {
+            assertRunning();
             if (!context.canWrite()) throw new Error(`${path} changed during session completion; update deferred`);
             const file = fileAt(path);
             const disk = await app.vault.read(file);
             if (await sha256(comparableContent(disk, api, context.comparisonVersion)) !== expectedHash) {
                 throw new Error(`${path} changed before metadata write; update deferred`);
             }
-            const checkBuffers = () => {
-                for (const view of viewsFor(path)) {
-                    if (view.dirty === true || comparableContent(view.editor.getValue(), api, context.comparisonVersion) !== comparableContent(disk, api, context.comparisonVersion)) {
-                        throw new Error(`${path} has unsaved or stale editor content; metadata update deferred`);
-                    }
-                }
-            };
+            const checkBuffers = () => checkViews(path, disk, context.comparisonVersion);
             checkBuffers();
             writing.add(path);
             try {
@@ -345,7 +357,7 @@ export function startEditSessions(app, api) {
     const finishInactive = () => {
         clearTimeout(leavingTimer);
         leavingTimer = setTimeout(() => {
-            if (stopped) return;
+            if (stopped || closing || suspended) return;
             for (const path of tracker.paths()) if (!active(path)) void tracker.finish(path);
         }, 150);
     };
@@ -359,25 +371,35 @@ export function startEditSessions(app, api) {
             const mtime = fileAt(path)?.stat?.mtime;
             await tracker.observe(path, text, Number.isFinite(mtime) ? mtime : Date.now());
             checkpointSoon();
-            if (!active(path)) await tracker.finish(path);
+            if (!closing && !suspended && (!active(path) || completionRequests.has(path))) {
+                await tracker.finish(path, { force: completionRequests.has(path) });
+                if (!tracker.paths().includes(path)) completionRequests.delete(path);
+            }
         }).catch(report);
         return diskQueue;
     };
     const flush = onlyPath => {
         flushQueue = flushQueue.then(async () => {
-        // Save buffers first, then consume their modify events, then close the session(s).
+        if (stopped || closing || suspended) { await tracker.checkpoint(); return; }
+        // Native Obsidian owns body persistence. Await an existing save only;
+        // unsaved sessions stay journaled and retry on a later native modify event.
         const paths = new Set();
         app.workspace.iterateAllLeaves(leaf => {
             const view = leaf.view;
             if (view.editor && eligible(view.file?.path ?? "") && (!onlyPath || view.file.path === onlyPath)) paths.add(view.file.path);
         });
-        for (const path of paths) await saveViews(path);
+        for (const path of paths) { completionRequests.add(path); await waitForNativeSave(path); }
+        if (onlyPath) completionRequests.add(onlyPath);
         // Include final disk changes even if their modify event hasn't been handled yet.
         for (const path of paths) await observeFile(fileAt(path));
         if (onlyPath && !paths.has(onlyPath)) await observeFile(fileAt(onlyPath));
         await diskQueue;
         await tracker.checkpoint();
-        for (const path of tracker.paths()) if (!onlyPath || path === onlyPath) await tracker.finish(path, { force: true });
+        for (const path of tracker.paths()) if (!onlyPath || path === onlyPath) {
+            completionRequests.add(path);
+            await tracker.finish(path, { force: true });
+            if (!tracker.paths().includes(path)) completionRequests.delete(path);
+        }
         await tracker.checkpoint();
         }).catch(report);
         return flushQueue;
@@ -390,13 +412,20 @@ export function startEditSessions(app, api) {
     refs.push([app.vault, app.vault.on("rename", (file, oldPath) => { void tracker.rename(oldPath, file.path); })]);
     refs.push([app.vault, app.vault.on("delete", file => { void tracker.remove(file.path); })]);
     refs.push([app.workspace, app.workspace.on("quit", tasks => {
-        if (tasks?.add) tasks.add(() => flush());
-        else return flush().catch(report);
+        closing = true; // Synchronous: invalidate already queued completions too.
+        if (tasks?.add) tasks.add(() => tracker.checkpoint());
+        else return tracker.checkpoint();
     })]);
-    const onHide = () => { if (globalThis.document?.visibilityState === "hidden") void flush().catch(report); };
-    const onMobileBlur = () => { void flush().catch(report); };
+    const onMobileBlur = () => { suspended = true; void tracker.checkpoint(); };
+    const onResume = () => {
+        if (stopped || closing || globalThis.document?.visibilityState === 'hidden') return;
+        suspended = false; void flush();
+    };
+    const onHide = () => { if (globalThis.document?.visibilityState === 'hidden') onMobileBlur(); else onResume(); };
     globalThis.document?.addEventListener("visibilitychange", onHide);
     globalThis.window?.addEventListener("pagehide", onMobileBlur);
+    globalThis.window?.addEventListener("pageshow", onResume);
+    if (api.Platform?.isMobile) globalThis.window?.addEventListener("focus", onResume);
     if (api.Platform?.isMobile) globalThis.window?.addEventListener("blur", onMobileBlur);
     // The core save command has no public post-save event. Wrap only its execution
     // callbacks, preserving availability checks, original return values and bindings.
@@ -453,11 +482,12 @@ export function startEditSessions(app, api) {
         for (const [emitter, ref] of refs) emitter.offref(ref);
         globalThis.document?.removeEventListener("visibilitychange", onHide);
         globalThis.window?.removeEventListener("pagehide", onMobileBlur);
+        globalThis.window?.removeEventListener("pageshow", onResume);
+        globalThis.window?.removeEventListener("focus", onResume);
         globalThis.window?.removeEventListener("blur", onMobileBlur);
         restoreSaveCallbacks.forEach(restore => restore());
-        // Plugin cleanup can be reached without a preceding workspace quit.
-        // Do not leave a known pending session as journal-only in that case.
-        return flush().then(() => diskQueue).then(() => tracker.checkpoint());
+        // Unload may not await our return value. Never touch note files here.
+        return tracker.checkpoint();
     };
     stop.complete = flush;
     stop.pendingPaths = () => tracker.paths();

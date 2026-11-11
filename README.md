@@ -2,13 +2,14 @@
 
 Track meaningful editing sessions and mark what changed.
 
-**Status: standalone development preview, version 0.1.1. Not yet released or submitted to the community directory. Desktop and Android live validation remains pending.**
+**Status: standalone development preview, version 0.1.2. Not yet released or submitted to the community directory. Desktop and Android live validation remains pending. Versions 0.1.0 and 0.1.1 have an unsafe shutdown save path; do not use them.**
 
 Session Marks treats an editing session as a unit of work. It compares actual content, then updates frontmatter timestamps and a revision counter at defined session boundaries instead of repeatedly interrupting typing.
 
 ## Behavior
 
-- Complete a changed session when leaving a note, explicitly saving it, quitting Obsidian, or backgrounding the mobile activity.
+- Complete a changed session after native Obsidian persistence when leaving a note or explicitly saving it. The plugin never invokes a view's save method.
+- On quit, plugin unload, or mobile backgrounding, checkpoint pending metadata work without writing notes. Complete it after the next safe startup or foreground return.
 - Compare the note body and frontmatter. Unchanged content or a complete undo must not change either managed field.
 - Make all three property names configurable. Defaults are `created`, `updated`, `revision`; the update/counter fields are excluded from content comparison.
 - If the creation property is absent at a changed session's commit, fill it with the final updated value. Preserve an existing creation value.
@@ -64,7 +65,7 @@ Fingerprints and pending write intentions are device-local, under a `session-mar
 
 The previous 0.1.0 plugin journal can be copied into the new namespace when using its exact `created`/`updated`/`updated_count` mapping. If old sessions remain pending under that mapping, recover them before choosing different names. Originals are retained; a mapping change cannot silently reinterpret an old counter.
 
-Normal quit adds an awaited completion task. Android backgrounding is best effort; process termination may require recovery on the next launch. Incoming changes that already modify either managed field are not counted again, but multi-device counters are not an atomic distributed counter. The explicit-save integration wraps an internal Obsidian command and needs live compatibility testing.
+Normal quit adds an awaited journal checkpoint, with no note writes. Pending metadata is recovered after native content persistence on the next safe startup or foreground return. Unsaved, detached, dirty or divergent views defer completion; the plugin does not force-save their bodies. Mobile checkpointing remains best effort if the process is killed immediately. The journal contains fingerprints and metadata, not a backup of unsaved text; body persistence remains Obsidian's responsibility. Incoming changes that already modify either managed field are not counted again, but multi-device counters are not an atomic distributed counter. The explicit-save integration wraps an internal Obsidian command and awaits an existing native save promise; it needs live compatibility testing.
 
 See [the captured reference behavior](docs/reference-behavior.md) for comparison/recovery rules and focused live checks. Its internal-module names describe the source implementation; the standalone plugin uses its own namespace and lifecycle.
 
