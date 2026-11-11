@@ -1,5 +1,4 @@
 import { startEditSessions } from './edit-sessions.mjs';
-import { orderFrontmatter } from './frontmatter-order.mjs';
 import { normalizeSettings } from './settings.mjs';
 
 export function createPluginClass(api, startRuntime = startEditSessions) {
@@ -9,7 +8,13 @@ export function createPluginClass(api, startRuntime = startEditSessions) {
             containerEl.empty();
             containerEl.addClass('session-marks-settings');
             let excludedFolders = [...this.plugin.settings.excludedFolders];
-            let frontmatterOrder = [...this.plugin.settings.frontmatterOrder];
+            const properties = { ...this.plugin.settings.properties };
+            for (const [role, label] of [['created', 'Created property'], ['updated', 'Updated property'], ['revision', 'Revision property']]) {
+                new api.Setting(containerEl)
+                    .setName(label)
+                    .setDesc('A top-level frontmatter property name. Existing properties are not renamed automatically.')
+                    .addText(input => input.setValue(properties[role]).onChange(value => { properties[role] = value; }));
+            }
             new api.Setting(containerEl)
                 .setName('Excluded folders')
                 .setDesc('One vault-relative folder per line. Each folder and its subfolders are excluded.')
@@ -17,17 +22,11 @@ export function createPluginClass(api, startRuntime = startEditSessions) {
                     excludedFolders = value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
                 }));
             new api.Setting(containerEl)
-                .setName('Frontmatter property order')
-                .setDesc('Used when a managed property is first added. Unknown properties keep their relative order. One name per line.')
-                .addTextArea(input => input.setValue(frontmatterOrder.join('\n')).onChange(value => {
-                    frontmatterOrder = value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-                }));
-            new api.Setting(containerEl)
                 .setName('Apply settings')
                 .setDesc('Completes pending editing sessions before applying the new rules.')
                 .addButton(button => button.setButtonText('Save and apply').setCta().onClick(async () => {
                     try {
-                        await this.plugin.applySettings({ excludedFolders, frontmatterOrder });
+                        await this.plugin.applySettings({ excludedFolders, properties });
                         new api.Notice('Session Marks settings applied.');
                     } catch (error) { new api.Notice(error.message, 10000); }
                 }));
@@ -81,7 +80,7 @@ export function createPluginClass(api, startRuntime = startEditSessions) {
                 this.runtime = startRuntime(this.app, {
                     ...api, owner: this,
                     excludedFolders: this.settings.excludedFolders,
-                    orderFrontmatter: fm => orderFrontmatter(fm, this.settings.frontmatterOrder),
+                    properties: this.settings.properties,
                     formatDate: iso => api.moment(iso).format('YYYY-MM-DDTHH:mm:ssZ')
                 });
             });
@@ -91,17 +90,20 @@ export function createPluginClass(api, startRuntime = startEditSessions) {
 
         async applySettings(value) {
             const settings = normalizeSettings(value);
-            // Finish under the old settings; changing folder exclusions must not
-            // silently drop a pending session before it has had a chance to commit.
+            // Finish under the old names and exclusions before changing the rules.
             const restart = this.restartQueue.then(async () => {
                 const previous = this.runtime;
                 this.runtime = null;
                 await previous?.();
+                if (previous?.pendingPaths?.().length && JSON.stringify(settings.properties) !== JSON.stringify(this.settings.properties)) {
+                    throw new Error('Pending sessions remain under the old property names. Complete them before changing names.');
+                }
                 await this.saveData(settings);
                 this.settings = settings;
             });
             this.restartQueue = restart.catch(() => {});
-            await restart;
+            try { await restart; }
+            catch (error) { await this.restartTracking(); throw error; }
             await this.restartTracking();
         }
 

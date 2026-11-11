@@ -16,9 +16,9 @@ The helper, synthetic tests and behavior specification were extracted into this 
 
 1. `src/edit-sessions.mjs` retains the state machine, guarded writer and editor/vault/lifecycle integration from the current helper.
 2. `src/plugin.mjs` supplies a standalone Obsidian lifecycle owner, completion commands and settings UI. Runtime restarts await cleanup; each plugin instance owns its editor extension.
-3. Device-local state uses `session-marks.v1:<vault path/name>` and its `:baselines` companion, isolated from the prototype and synced settings.
-4. `src/frontmatter-order.mjs` bundles the reference order and reorders only when managed properties are first added. It has no Templater or metadata-note dependency.
-5. Exclusions and initial property ordering are configurable. Managed property names remain `updated` and `updated_count` for the first preview.
+3. Device-local state uses `session-marks.v2:<vault identity>:<property mapping>` and its `:baselines` companion, isolated from the prototype and synced settings. `src/storage.mjs` handles compatible previous-preview state without deleting originals.
+4. `src/frontmatter-order.mjs` adds a partial session block locally, preserving unrelated property order and never rearranging a complete block. It has no Templater or metadata-note dependency.
+5. Exclusions and all three top-level property names are configurable. Defaults are `created`, `updated`, `revision`. Missing creation metadata is filled from the final updated value; existing creation values remain unchanged.
 
 ## Decisions to retain
 
@@ -33,7 +33,7 @@ The helper, synthetic tests and behavior specification were extracted into this 
 ## Decisions requiring validation
 
 - The prototype wraps the internal `editor:save-file` command because no public post-save event was identified. Confirm compatibility and a safe failure mode.
-- Retained localStorage has explicit namespacing and existing format versions. Size limits, recovery UI and an explicit prototype-state migration remain future work; do not silently import state.
+- Retained localStorage has explicit namespacing and format versions. Size limits, recovery UI and an explicit internal-helper-state migration remain future work; do not silently import that state.
 - Validate multiple windows, dirty editor buffers, Properties/Bases changes and mobile activity transitions on real clients.
 - Define conflict visibility and recovery commands before exposing unresolved journal entries to general users.
 - Establish supported Obsidian versions and acceptable mobile startup overhead.

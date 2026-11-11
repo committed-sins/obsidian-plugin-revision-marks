@@ -1,10 +1,12 @@
 // One metadata update per completed, genuinely changed editor session.
 // Dependencies are injected so the state machine can also be tested outside Obsidian.
 export const EXCLUDED_FOLDERS = ["archives", "scripts", "libraries", "templates", "inbound"];
-const IGNORED_PROPERTIES = new Set(["updated", "updated_count"]);
+import { propertyNames } from './properties.mjs';
+import { addSessionProperties } from './frontmatter-order.mjs';
+import { prepareSessionStorage } from './storage.mjs';
 export const eligibleNote = (path, excludedFolders = EXCLUDED_FOLDERS) => path.endsWith(".md") && !excludedFolders.some(folder => path === folder || path.startsWith(folder + "/"));
 
-export function comparableContent(text, api, comparisonVersion = 2) {
+export function comparableContent(text, api, comparisonVersion = 2, overrides = {}) {
     text = text.replace(/\r\n?/g, "\n");
     const info = api.getFrontMatterInfo(text);
     const properties = info.exists ? api.parseYaml(info.frontmatter) ?? {} : {};
@@ -15,16 +17,19 @@ export function comparableContent(text, api, comparisonVersion = 2) {
         if (value && typeof value === "object") return Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])]));
         return value;
     };
-    const relevant = Object.fromEntries(Object.entries(properties).filter(([key]) => !IGNORED_PROPERTIES.has(key) && !(comparisonVersion === 1 && key === "created")));
+    const names = propertyNames(api);
+    const relevant = Object.fromEntries(Object.entries({ ...properties, ...overrides }).filter(([key]) => key !== names.updated && key !== names.revision && !(comparisonVersion === 1 && key === names.created)));
     return JSON.stringify(stable(relevant)) + "\n" + (info.exists ? text.slice(info.contentStart) : text);
 }
 
 export function metadataOf(text, api) {
     const info = api.getFrontMatterInfo(text);
     const fm = info.exists ? api.parseYaml(info.frontmatter) ?? {} : {};
-    const count = fm.updated_count ?? 0;
-    if (!Number.isSafeInteger(count) || count < 0) throw new Error("updated_count must be a non-negative integer");
-    return { count, updated: fm.updated instanceof Date ? fm.updated.toISOString() : fm.updated ?? null };
+    const names = propertyNames(api);
+    const count = fm[names.revision] ?? 0;
+    if (!Number.isSafeInteger(count) || count < 0) throw new Error(`${names.revision} must be a non-negative integer`);
+    return { count, updated: fm[names.updated] instanceof Date ? fm[names.updated].toISOString() : fm[names.updated] ?? null,
+        hasCreated: Object.hasOwn(fm, names.created), created: fm[names.created] instanceof Date ? fm[names.created].toISOString() : fm[names.created] ?? null };
 }
 
 async function sha256(text) {
@@ -153,13 +158,14 @@ export function createSessionTracker({ api, storage, storageKey, read, write, ex
         const contentHash = await hash(comparableContent(text, api, record.comparisonVersion));
         const canonicalHash = record.comparisonVersion === 2 ? contentHash : await hash(comparableContent(text, api));
         const metadata = metadataOf(text, api);
-        if (record.intent && metadata.count === record.intent.count && metadata.updated === record.intent.updated) {
-            if (contentHash === record.latestHash) {
+        if (record.intent && metadata.count === record.intent.count && metadata.updated === record.intent.updated &&
+            (!record.intent.addCreated || (metadata.hasCreated && metadata.created === record.intent.created))) {
+            if (canonicalHash === record.intent.postCommitHash || (!record.intent.postCommitHash && contentHash === record.latestHash)) {
                 remember(path, canonicalHash, metadata, mtime);
                 sessions.delete(path); save(); saveBaselines(); return; // Commit succeeded before interruption.
             }
             // The old commit succeeded, followed by another unstamped content change.
-            record.baselineHash = record.latestHash;
+            record.baselineHash = record.intent.postCommitHash ?? record.latestHash;
             record.initial = metadata;
             delete record.intent;
         }
@@ -184,15 +190,19 @@ export function createSessionTracker({ api, storage, storageKey, read, write, ex
         // Compare the formatted value so sub-second mtime differences don't cause rewrites.
         record.intent = { count: record.intent?.count ?? metadata.count + 1,
             updated: updateTimestamp ? proposed : metadata.updated, updateTimestamp };
+        record.intent.addCreated = !metadata.hasCreated;
+        record.intent.created = metadata.hasCreated ? metadata.created : record.intent.updated;
+        record.intent.postCommitHash = record.intent.addCreated ? await hash(comparableContent(text, api, 2,
+            { [propertyNames(api).created]: record.intent.created })) : canonicalHash;
         if (!Number.isSafeInteger(record.intent.count)) throw new Error("updated_count overflow");
         save(); // Write-ahead record: retry must never increment twice.
         if (!canWrite()) return;
         await write(path, record.intent, metadata, contentHash, { canWrite, force, comparisonVersion: record.comparisonVersion });
-        remember(path, canonicalHash, record.intent, mtime);
+        remember(path, record.intent.postCommitHash, record.intent, mtime);
         if (session.revision === revision) sessions.delete(path);
         else {
             // Input after the write belongs to a fresh session, not to the just-committed one.
-            session.record = { path, baselineHash: canonicalHash, latestHash: canonicalHash,
+            session.record = { path, baselineHash: record.intent.postCommitHash, latestHash: record.intent.postCommitHash,
                 initial: { count: record.intent.count, updated: record.intent.updated }, editedAt: session.editedAt, comparisonVersion: 2 };
             session.savedRevision = undefined;
         }
@@ -259,7 +269,9 @@ export function startEditSessions(app, api) {
         });
         return views;
     };
-    const storageKey = "session-marks.v1:" + (app.vault.adapter.getBasePath?.() ?? app.vault.getName());
+    const names = propertyNames(api);
+    const storageKey = prepareSessionStorage(globalThis.localStorage,
+        app.vault.adapter.getBasePath?.() ?? app.vault.getName(), names);
     const saveViews = async path => {
         const views = viewsFor(path);
         const buffers = new Set(views.map(view => view.editor.getValue().replace(/\r\n?/g, "\n")));
@@ -299,14 +311,16 @@ export function startEditSessions(app, api) {
                 await app.fileManager.processFrontMatter(file, fm => {
                     if (!context.canWrite()) throw new Error(`${path} changed during metadata write`);
                     checkBuffers();
-                    const count = fm.updated_count ?? 0;
-                    const updated = fm.updated instanceof Date ? fm.updated.toISOString() : fm.updated ?? null;
+                    const count = fm[names.revision] ?? 0;
+                    const updated = fm[names.updated] instanceof Date ? fm[names.updated].toISOString() : fm[names.updated] ?? null;
                     if (count !== expected.count || updated !== expected.updated) throw new Error(`${path} metadata changed concurrently`);
-                    const needsOrder = !Object.hasOwn(fm, "updated") || !Object.hasOwn(fm, "updated_count");
-                    if (needsOrder && typeof api.orderFrontmatter !== "function") throw new Error("Frontmatter order helper is unavailable");
-                    if (intent.updateTimestamp !== false) fm.updated = intent.updated;
-                    fm.updated_count = intent.count;
-                    if (needsOrder) api.orderFrontmatter(fm);
+                    const hasCreated = Object.hasOwn(fm, names.created);
+                    const created = fm[names.created] instanceof Date ? fm[names.created].toISOString() : fm[names.created] ?? null;
+                    if (hasCreated !== expected.hasCreated || JSON.stringify(created) !== JSON.stringify(expected.created)) throw new Error(`${path} creation metadata changed concurrently`);
+                    const values = { [names.created]: hasCreated ? fm[names.created] : intent.created,
+                        [names.updated]: intent.updateTimestamp === false ? fm[names.updated] : intent.updated,
+                        [names.revision]: intent.count };
+                    addSessionProperties(fm, values, names);
                 });
             } finally { writing.delete(path); }
         }

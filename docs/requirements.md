@@ -8,7 +8,9 @@ A session starts with an actual content change and ends when the user leaves/clo
 
 Compare parsed frontmatter and the complete note body. Ignore only the two configured managed properties, frontmatter key order and line-ending convention. Preserve body whitespace as meaningful. A complete undo and metadata-only edits to the managed properties must produce no timestamp/counter write.
 
-Default output is `updated` plus one `updated_count` increment. Use the saved file's local mtime before our own metadata write. Creation dates remain outside the initial plugin scope. Invalid YAML or counters must fail without destructive rewriting.
+Default output is `created`, `updated` and one `revision` increment, with all three names configurable. Use the saved file's local mtime before our own metadata write. Fill an absent creation property with the final updated value; preserve existing creation values. Invalid YAML or counters must fail without destructive rewriting.
+
+When a session key is missing, insert a contiguous creation/update/revision block at the first existing session key, or at the end if none exist. Preserve unrelated properties' relative order. Once all three exist, preserve their exact positions and any manual arrangement.
 
 ## Input sources
 
@@ -28,4 +30,4 @@ For external changes, require a known content baseline. If content changed while
 
 ## Initial non-goals
 
-No revision-content history, remote service, analytics, creation-date replacement, encryption, Excalidraw/Canvas-specific integration, or arbitrary command execution from note content. Additional completion actions need a separate design.
+No revision-content history, remote service, analytics, replacement of an existing creation value, automatic property renaming, encryption, Excalidraw/Canvas-specific integration, or arbitrary command execution from note content. Additional completion actions need a separate design.

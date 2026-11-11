@@ -1,9 +1,9 @@
 import { EXCLUDED_FOLDERS } from './edit-sessions.mjs';
-import { DEFAULT_FRONTMATTER_ORDER } from './frontmatter-order.mjs';
+import { DEFAULT_PROPERTIES, normalizeProperties } from './properties.mjs';
 
 export const DEFAULT_SETTINGS = Object.freeze({
     excludedFolders: EXCLUDED_FOLDERS,
-    frontmatterOrder: DEFAULT_FRONTMATTER_ORDER
+    properties: DEFAULT_PROPERTIES
 });
 
 export function normalizeSettings(value = {}) {
@@ -14,7 +14,6 @@ export function normalizeSettings(value = {}) {
     if (excludedFolders.some(folder => folder.startsWith('/') || folder.includes(':') || folder.split('/').some(part => !part || part === '.' || part === '..'))) {
         throw new Error('Excluded folders must be relative vault folders, one per line.');
     }
-    const frontmatterOrder = list(value.frontmatterOrder, DEFAULT_SETTINGS.frontmatterOrder);
-    if (frontmatterOrder.some(key => /[\r\n]/.test(key))) throw new Error('Use one frontmatter property name per line.');
-    return { excludedFolders: [...new Set(excludedFolders)], frontmatterOrder };
+    const properties = normalizeProperties(value.properties);
+    return { excludedFolders: [...new Set(excludedFolders)], properties };
 }

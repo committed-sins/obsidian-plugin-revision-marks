@@ -1,6 +1,6 @@
 {
   "name": "obsidian-plugin-session-marks",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Content-aware editing sessions, timestamps and revision counts for Obsidian.",

@@ -5,6 +5,7 @@ import { comparableContent, createSessionTracker } from "../src/edit-sessions.mj
 
 // JSON mappings are valid YAML; isolate session behavior from Obsidian's YAML parser.
 const api = {
+    properties: { created: "created", updated: "updated", revision: "updated_count" },
     getFrontMatterInfo(text) {
         const match = text.match(/^---\n([\s\S]*?)\n---\n/);
         return match ? { exists: true, frontmatter: match[1], contentStart: match[0].length } : { exists: false };
@@ -16,7 +17,7 @@ const note = (body, fm = {}) => `---\n${JSON.stringify(fm)}\n---\n${body}`;
 const hash = async text => createHash("sha256").update(text).digest("hex");
 const properties = text => api.getFrontMatterInfo(text).exists ? api.parseYaml(api.getFrontMatterInfo(text).frontmatter) : {};
 const bodyOf = text => api.getFrontMatterInfo(text).exists ? text.slice(api.getFrontMatterInfo(text).contentStart) : text;
-const initial = { id: "stable-id", updated: "2026-01-01T00:00:00Z", updated_count: 7, tags: ["home"] };
+const initial = { created: "2025-01-01T00:00:00Z", id: "stable-id", updated: "2026-01-01T00:00:00Z", updated_count: 7, tags: ["home"] };
 function fixture() {
     const files = new Map([["notes/A.md", note("before", initial)]]);
     const storageData = new Map();
@@ -30,7 +31,7 @@ function fixture() {
         write: async (path, intent, expected) => {
             const fm = properties(files.get(path));
             assert.equal(fm.updated_count ?? 0, expected.count);
-            files.set(path, note(bodyOf(files.get(path)), { ...fm, updated: intent.updated, updated_count: intent.count }));
+            files.set(path, note(bodyOf(files.get(path)), { ...fm, ...(intent.addCreated ? { created: intent.created } : {}), updated: intent.updated, updated_count: intent.count }));
             writes.push(path);
             if (failAfterWrite) throw new Error("simulated interruption after commit");
         }
@@ -47,7 +48,7 @@ function fixture() {
 
 test("comparison ignores owned metadata and property order, but retains meaningful properties and body whitespace", () => {
     assert.equal(comparableContent(note("text", initial), api), comparableContent(note("text", {
-        tags: ["home"], updated_count: 900, updated: "later", id: "stable-id"
+        created: initial.created, tags: ["home"], updated_count: 900, updated: "later", id: "stable-id"
     }), api));
     assert.notEqual(comparableContent(note("text", initial), api), comparableContent(note("text ", initial), api));
     assert.notEqual(comparableContent(note("text", initial), api), comparableContent(note("text", { ...initial, tags: ["work"] }), api));
@@ -94,6 +95,26 @@ test("interruption after frontmatter commit does not increment again on recovery
     await f.tracker.finish("notes/A.md"); assert.equal(f.errors.length, 1);
     const recovered = createSessionTracker(f.options); await recovered.finish("notes/A.md");
     assert.equal(f.writes.length, 1); assert.equal(recovered.paths().length, 0);
+});
+
+test("a missing creation field is filled from the final updated value and recovery does not double count its insertion", async () => {
+    const f = fixture();
+    const withoutCreated = { ...initial }; delete withoutCreated.created;
+    f.files.set('notes/A.md', note('before', withoutCreated));
+    f.edit(note('changed', withoutCreated)); f.leave(); f.failAfterWrite();
+    await f.tracker.finish('notes/A.md');
+    const result = properties(f.files.get('notes/A.md'));
+    assert.equal(result.created, result.updated); assert.equal(result.updated_count, 8);
+    const recovered = createSessionTracker(f.options); await recovered.finish('notes/A.md');
+    assert.equal(f.writes.length, 1); assert.deepEqual(recovered.paths(), []);
+});
+
+test("content comparison and metadata extraction follow custom property names", () => {
+    const customApi = { ...api, properties: { created: 'born', updated: 'touched', revision: 'updated_revision' } };
+    assert.equal(comparableContent(note('same', { touched: 'a', updated_revision: 1 }), customApi),
+        comparableContent(note('same', { touched: 'b', updated_revision: 2 }), customApi));
+    assert.notEqual(comparableContent(note('same', { updated_count: 1 }), customApi),
+        comparableContent(note('same', { updated_count: 2 }), customApi), 'legacy names are ordinary fields when not configured');
 });
 
 test("unknown external content without mtime is retained; already-stamped sync is not counted again", async () => {

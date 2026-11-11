@@ -1,39 +1,24 @@
-export const DEFAULT_FRONTMATTER_ORDER = Object.freeze([
-    "id",
-    "scopes",
-    "areas",
-    "created",
-    "updated",
-    "updated_count",
-    "viewed",
-    "tags",
-    "aliases",
-    "tenants",
-    "contexts",
-    "dns",
-    "domains",
-    "emails",
-    "phones",
-    "addresses",
-    "locations",
-    "logins",
-    "connections",
-    "owners",
-    "usernames",
-    "status",
-    "order",
-    "priority",
-    "started",
-    "due",
-    "scheduled",
-    "finance",
-    "asset",
-    "timers"
-]);
+import { DEFAULT_PROPERTIES } from './properties.mjs';
 
-export function orderFrontmatter(frontmatter, order = DEFAULT_FRONTMATTER_ORDER) {
-    const keys = [...new Set([...order, ...Object.keys(frontmatter)])];
-    const entries = keys.filter(key => Object.hasOwn(frontmatter, key)).map(key => [key, frontmatter[key]]);
-    for (const key of Object.keys(frontmatter)) delete frontmatter[key];
-    for (const [key, value] of entries) Object.defineProperty(frontmatter, key, { value, enumerable: true, configurable: true, writable: true });
+// Only add a missing session-field block. Never globally sort an existing note.
+export function addSessionProperties(frontmatter, values, properties = DEFAULT_PROPERTIES) {
+    const managed = [properties.created, properties.updated, properties.revision];
+    const originalKeys = Object.keys(frontmatter);
+    const missing = managed.filter(key => !Object.hasOwn(frontmatter, key));
+    const existing = originalKeys.filter(key => managed.includes(key));
+    const entries = originalKeys.map(key => [key, Object.hasOwn(values, key) ? values[key] : frontmatter[key]]);
+    if (missing.length === 0) {
+        for (const key of managed) if (Object.hasOwn(values, key)) frontmatter[key] = values[key];
+        return;
+    }
+    const block = managed.map(key => [key, Object.hasOwn(values, key) ? values[key] : frontmatter[key]]);
+    const anchor = existing.length ? originalKeys.indexOf(existing[0]) : originalKeys.length;
+    const before = entries.slice(0, anchor).filter(([key]) => !managed.includes(key));
+    const after = entries.slice(anchor).filter(([key]) => !managed.includes(key));
+    // Reposition only the three session properties when completing a partial block.
+    // Unrelated properties keep their relative order and values.
+    for (const key of originalKeys) delete frontmatter[key];
+    for (const [key, value] of [...before, ...block, ...after]) {
+        Object.defineProperty(frontmatter, key, { value, enumerable: true, configurable: true, writable: true });
+    }
 }

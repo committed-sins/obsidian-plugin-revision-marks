@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DEFAULT_FRONTMATTER_ORDER, orderFrontmatter } from "../src/frontmatter-order.mjs";
 import { startEditSessions } from "../src/edit-sessions.mjs";
-const frontmatterOrder = DEFAULT_FRONTMATTER_ORDER;
 
 const info = text => {
     const match = text.match(/^---\n([\s\S]*?)\n---\n/);
@@ -38,7 +36,7 @@ test("editor integration counts only full-note user input; leaving saves and com
             buffer = disk;
         } }
     };
-    const api = { getFrontMatterInfo: info, parseYaml: JSON.parse, formatDate: value => value, orderFrontmatter,
+    const api = { getFrontMatterInfo: info, parseYaml: JSON.parse, formatDate: value => value, properties: { created: "created", updated: "updated", revision: "updated_count" },
         EditorView: { updateListener: { of: callback => callback } }, editorInfoField: "info",
         Notice: class { constructor(message) { notices.push(message); } } };
     const dispatch = (before, after, event, editorValue = after) => {
@@ -63,7 +61,7 @@ test("editor integration counts only full-note user input; leaving saves and com
         assert.equal(writes, 1); assert.ok(saves >= 2);
         assert.equal(JSON.parse(info(disk).frontmatter).updated_count, 5);
         assert.equal(JSON.parse(info(disk).frontmatter).id, "kept");
-        assert.deepEqual(Object.keys(JSON.parse(info(disk).frontmatter)), ["id", "updated", "updated_count"]);
+        assert.deepEqual(Object.keys(JSON.parse(info(disk).frontmatter)), ["created", "updated", "updated_count", "id"]);
         assert.deepEqual(notices, []);
         await stop(); stop = undefined;
         stop = startEditSessions(app, { ...api, owner: app.plugins.plugins["session-marks"] });
@@ -113,7 +111,7 @@ test("save command, Bases/properties, awaited quit and Android background events
             void callbacks.get("vault:modify")?.(file); // Must not create a feedback loop.
         } }
     };
-    const api = { getFrontMatterInfo: info, parseYaml: JSON.parse, formatDate: value => value, orderFrontmatter, Platform: { isMobile: true },
+    const api = { getFrontMatterInfo: info, parseYaml: JSON.parse, formatDate: value => value, properties: { created: "created", updated: "updated", revision: "updated_count" }, Platform: { isMobile: true },
         EditorView: { updateListener: { of: callback => callback } }, editorInfoField: "info",
         Notice: class { constructor(message) { notices.push(message); } } };
     const edit = text => {
@@ -165,8 +163,22 @@ test("save command, Bases/properties, awaited quit and Android background events
         disk = buffer = `---\n${JSON.stringify({ id: "kept", created: "2026-01-01", updated: "older", tags: ["keep"], custom: { nested: true } })}\n---\nbefore counter`;
         edit("after counter"); command.checkCallback(false); await wait(60);
         assert.equal(fm().updated_count, 1);
-        assert.deepEqual(Object.keys(fm()), frontmatterOrder.filter(key => ["id", "created", "updated", "updated_count", "tags"].includes(key)).concat("custom"));
+        assert.deepEqual(Object.keys(fm()), ["id", "created", "updated", "updated_count", "tags", "custom"]);
         assert.deepEqual(fm().tags, ["keep"]); assert.deepEqual(fm().custom, { nested: true });
+        await stop(); stop = undefined;
+        // Custom names, a single existing timestamp in the middle, and no implicit legacy-field rename.
+        const customProperties = { created: 'born', updated: 'touched', revision: 'updated_revision' };
+        disk = buffer = `---\n${JSON.stringify({ id: 'kept', title: 'before block', touched: 'old', custom: true, updated_count: 40 })}\n---\ncustom before`;
+        stop = startEditSessions(app, { ...api, properties: customProperties, owner: app.plugins.plugins["session-marks"] });
+        edit('custom after'); command.checkCallback(false); await wait(60);
+        assert.equal(fm().born, fm().touched); assert.equal(fm().updated_revision, 1);
+        assert.equal(fm().updated_count, 40, 'unconfigured legacy counter is not renamed or overwritten');
+        assert.deepEqual(Object.keys(fm()), ['id', 'title', 'born', 'touched', 'updated_revision', 'custom', 'updated_count']);
+        // Once complete, even an intentionally scattered order is kept on the next session.
+        disk = buffer = `---\n${JSON.stringify({ updated_revision: 1, title: 'between', touched: fm().touched, custom: true, born: fm().born })}\n---\nmanual order`;
+        const manualOrder = Object.keys(fm());
+        edit('manual order edited'); command.checkCallback(false); await wait(60);
+        assert.deepEqual(Object.keys(fm()), manualOrder); assert.equal(fm().updated_revision, 2);
         assert.deepEqual(notices, []);
     } finally {
         await stop?.();
