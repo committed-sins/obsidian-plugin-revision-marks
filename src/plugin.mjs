@@ -7,6 +7,10 @@ export function createPluginClass(api, startRuntime = startEditSessions) {
             const { containerEl } = this;
             containerEl.empty();
             containerEl.addClass('revision-marks-settings');
+            containerEl.createEl('p', {
+                cls: 'setting-item-description',
+                text: 'Tracks changed editing sessions instead of individual autosaves. Timestamps and revision counts update when you leave or explicitly save a note, keeping metadata writes out of your typing flow. Unchanged content and complete undo produce no update.'
+            });
             let excludedFolders = [...this.plugin.settings.excludedFolders];
             const properties = { ...this.plugin.settings.properties };
             for (const [role, label] of [['created', 'Created property'], ['updated', 'Updated property'], ['revision', 'Revision property']]) {

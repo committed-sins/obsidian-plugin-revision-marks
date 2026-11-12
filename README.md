@@ -4,7 +4,7 @@ Track meaningful editing sessions and mark what changed.
 
 **Status: standalone development preview, version 0.1.4. Not yet released or submitted to the community directory. Desktop and Android live validation remains pending. Versions 0.1.0 and 0.1.1 have an unsafe shutdown save path; do not use them.**
 
-Revision Marks treats an editing session as a unit of work. It compares actual content, then updates frontmatter timestamps and a revision counter at defined session boundaries instead of repeatedly interrupting typing.
+Revision Marks tracks changed editing sessions instead of individual autosaves. Timestamps and revision counts update when you leave or explicitly save a note, keeping metadata writes out of your typing flow. Unchanged content and complete undo produce no update.
 
 ## Behavior
 
