@@ -7,23 +7,24 @@ export function createPluginClass(api, startRuntime = startEditSessions) {
             const { containerEl } = this;
             containerEl.empty();
             containerEl.addClass('revision-marks-settings');
-            containerEl.createEl('p', {
-                cls: 'setting-item-description',
-                text: 'Tracks changed editing sessions instead of individual autosaves. Timestamps and revision counts update when you leave or explicitly save a note, keeping metadata writes out of your typing flow. Unchanged content and complete undo produce no update.'
-            });
+            new api.Setting(containerEl)
+                .setName('Track editing sessions, not autosaves')
+                .setDesc('Timestamps and optional revision counts update when you leave or explicitly save a note.\nUnchanged content and complete undo produce no update, keeping metadata writes out of your typing flow.');
             let excludedFolders = [...this.plugin.settings.excludedFolders];
             let revisionMode = this.plugin.settings.revisionMode;
             const properties = { ...this.plugin.settings.properties };
             let revisionNameInput;
-            new api.Setting(containerEl)
-                .setName('Revision tracking')
-                .setDesc('Off updates timestamps only and preserves existing revision values. Counter adds one per changed session.')
-                .addDropdown(dropdown => dropdown.addOption('off', 'Off').addOption('counter', 'Counter')
-                    .setValue(revisionMode).onChange(value => {
-                        revisionMode = value;
-                        revisionNameInput?.setDisabled(value === 'off');
-                    }));
             for (const [role, label] of [['created', 'Created property'], ['updated', 'Updated property'], ['revision', 'Revision property']]) {
+                if (role === 'revision') {
+                    new api.Setting(containerEl)
+                        .setName('Revision tracking')
+                        .setDesc('Off updates timestamps only and preserves existing revision values. Counter adds one per changed session.')
+                        .addDropdown(dropdown => dropdown.addOption('off', 'Off').addOption('counter', 'Counter')
+                            .setValue(revisionMode).onChange(value => {
+                                revisionMode = value;
+                                revisionNameInput?.setDisabled(value === 'off');
+                            }));
+                }
                 new api.Setting(containerEl)
                     .setName(label)
                     .setDesc('A top-level frontmatter property name. Existing properties are not renamed automatically.')
