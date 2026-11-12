@@ -7,9 +7,9 @@ export function createPluginClass(api, startRuntime = startEditSessions) {
             const { containerEl } = this;
             containerEl.empty();
             containerEl.addClass('revision-marks-settings');
-            new api.Setting(containerEl)
-                .setName('Track editing sessions, not autosaves')
-                .setDesc('Timestamps and optional revision counts update when you leave or explicitly save a note.\nUnchanged content and complete undo produce no update, keeping metadata writes out of your typing flow.');
+            new api.SettingGroup(containerEl)
+                .addSetting(setting => setting.setName('Track editing sessions, not autosaves')
+                    .setDesc('Timestamps and optional revision counts update when you leave or explicitly save a note.\nUnchanged content and complete undo produce no update, keeping metadata writes out of your typing flow.'));
             let excludedFolders = [...this.plugin.settings.excludedFolders];
             let revisionMode = this.plugin.settings.revisionMode;
             const properties = { ...this.plugin.settings.properties };
@@ -20,8 +20,9 @@ export function createPluginClass(api, startRuntime = startEditSessions) {
                         input.setValue(properties[role]).onChange(value => { properties[role] = value; });
                         if (role === 'revision') { revisionNameInput = input; input.setDisabled(revisionMode === 'off'); }
                     });
+            const timestampGroup = new api.SettingGroup(containerEl);
             for (const [role, label] of [['created', 'Created property'], ['updated', 'Updated property']]) {
-                configureProperty(new api.Setting(containerEl), role, label);
+                timestampGroup.addSetting(setting => configureProperty(setting, role, label));
             }
             new api.SettingGroup(containerEl)
                 .setHeading('Revision tracking')
@@ -33,21 +34,20 @@ export function createPluginClass(api, startRuntime = startEditSessions) {
                             revisionNameInput?.setDisabled(value === 'off');
                         })))
                 .addSetting(setting => configureProperty(setting, 'revision', 'Revision property'));
-            new api.Setting(containerEl)
-                .setName('Excluded folders')
+            new api.SettingGroup(containerEl)
+                .addSetting(setting => setting.setName('Excluded folders')
                 .setDesc('One vault-relative folder per line. Each folder and its subfolders are excluded.')
                 .addTextArea(input => input.setValue(excludedFolders.join('\n')).onChange(value => {
                     excludedFolders = value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-                }));
-            new api.Setting(containerEl)
-                .setName('Apply settings')
+                })))
+                .addSetting(setting => setting.setName('Apply settings')
                 .setDesc('Completes pending editing sessions before applying the new rules.')
                 .addButton(button => button.setButtonText('Save and apply').setCta().onClick(async () => {
                     try {
                         await this.plugin.applySettings({ excludedFolders, properties, revisionMode });
                         new api.Notice('Revision Marks settings applied.');
                     } catch (error) { new api.Notice(error.message, 10000); }
-                }));
+                })));
         }
     }
 
