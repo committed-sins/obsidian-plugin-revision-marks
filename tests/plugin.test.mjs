@@ -99,9 +99,13 @@ test('revision dropdown defaults to Counter and applies Off with a disabled prop
         addDropdown(fn) { return this.control(fn); } addText(fn) { return this.control(fn); }
         addTextArea(fn) { return this.control(fn); } addButton(fn) { return this.control(fn); }
     };
+    f.api.SettingGroup = class {
+        setHeading() { return this; }
+        addSetting(fn) { fn(new f.api.Setting()); return this; }
+    };
     await f.plugin.onload(); await f.ready();
     f.tabs[0].containerEl = { empty() {}, addClass() {}, createEl() {} }; f.tabs[0].display();
-    const mode = controls.get('Revision tracking'), name = controls.get('Revision property');
+    const mode = controls.get('Mode'), name = controls.get('Revision property');
     assert.equal(mode.value, 'counter'); assert.deepEqual(mode.options, { off: 'Off', counter: 'Counter' });
     mode.change('off'); assert.equal(name.disabled, true); assert.equal(f.plugin.settings.revisionMode, 'counter');
     await controls.get('Apply settings').click();
