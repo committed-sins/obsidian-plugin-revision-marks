@@ -4,6 +4,8 @@ export function propertyNames(api) {
     return api.properties ?? DEFAULT_PROPERTIES;
 }
 
+export const revisionEnabled = api => api.revisionMode !== 'off';
+
 export function normalizeProperties(value = {}) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Property names must be an object with created, updated and revision names.');
     const properties = Object.fromEntries(Object.entries(DEFAULT_PROPERTIES).map(([role, fallback]) => {

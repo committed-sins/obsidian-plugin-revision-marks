@@ -1,5 +1,7 @@
 # Session properties
 
+With Revision tracking set to Off, only the creation/update pair is managed and completed. Any existing revision property is left in place and treated as ordinary content; it is never created or incremented. Counter remains the default and uses the three-field rules below.
+
 Configure three distinct top-level names under Revision Marks settings. Defaults:
 
 ```yaml

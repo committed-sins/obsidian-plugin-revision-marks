@@ -12,12 +12,25 @@ export function createPluginClass(api, startRuntime = startEditSessions) {
                 text: 'Tracks changed editing sessions instead of individual autosaves. Timestamps and revision counts update when you leave or explicitly save a note, keeping metadata writes out of your typing flow. Unchanged content and complete undo produce no update.'
             });
             let excludedFolders = [...this.plugin.settings.excludedFolders];
+            let revisionMode = this.plugin.settings.revisionMode;
             const properties = { ...this.plugin.settings.properties };
+            let revisionNameInput;
+            new api.Setting(containerEl)
+                .setName('Revision tracking')
+                .setDesc('Off updates timestamps only and preserves existing revision values. Counter adds one per changed session.')
+                .addDropdown(dropdown => dropdown.addOption('off', 'Off').addOption('counter', 'Counter')
+                    .setValue(revisionMode).onChange(value => {
+                        revisionMode = value;
+                        revisionNameInput?.setDisabled(value === 'off');
+                    }));
             for (const [role, label] of [['created', 'Created property'], ['updated', 'Updated property'], ['revision', 'Revision property']]) {
                 new api.Setting(containerEl)
                     .setName(label)
                     .setDesc('A top-level frontmatter property name. Existing properties are not renamed automatically.')
-                    .addText(input => input.setValue(properties[role]).onChange(value => { properties[role] = value; }));
+                    .addText(input => {
+                        input.setValue(properties[role]).onChange(value => { properties[role] = value; });
+                        if (role === 'revision') { revisionNameInput = input; input.setDisabled(revisionMode === 'off'); }
+                    });
             }
             new api.Setting(containerEl)
                 .setName('Excluded folders')
@@ -30,7 +43,7 @@ export function createPluginClass(api, startRuntime = startEditSessions) {
                 .setDesc('Completes pending editing sessions before applying the new rules.')
                 .addButton(button => button.setButtonText('Save and apply').setCta().onClick(async () => {
                     try {
-                        await this.plugin.applySettings({ excludedFolders, properties });
+                        await this.plugin.applySettings({ excludedFolders, properties, revisionMode });
                         new api.Notice('Revision Marks settings applied.');
                     } catch (error) { new api.Notice(error.message, 10000); }
                 }));
@@ -85,6 +98,7 @@ export function createPluginClass(api, startRuntime = startEditSessions) {
                     ...api, owner: this,
                     excludedFolders: this.settings.excludedFolders,
                     properties: this.settings.properties,
+                    revisionMode: this.settings.revisionMode,
                     formatDate: iso => api.moment(iso).format('YYYY-MM-DDTHH:mm:ssZ')
                 });
             });
@@ -101,8 +115,8 @@ export function createPluginClass(api, startRuntime = startEditSessions) {
                 if (this.stopping) return;
                 this.runtime = null;
                 await previous?.();
-                if (previous?.pendingPaths?.().length && JSON.stringify(settings.properties) !== JSON.stringify(this.settings.properties)) {
-                    throw new Error('Pending sessions remain under the old property names. Complete them before changing names.');
+                if (previous?.pendingPaths?.().length && (JSON.stringify(settings.properties) !== JSON.stringify(this.settings.properties) || settings.revisionMode !== this.settings.revisionMode)) {
+                    throw new Error('Pending sessions remain under the old property names or revision mode. Complete them before changing these settings.');
                 }
                 await this.saveData(settings);
                 this.settings = settings;

@@ -50,7 +50,7 @@ async function fixture(run) {
         vault: { ...emitter('vault:'), adapter: {}, getName: () => 'shutdown-fixture',
             getAbstractFileByPath: path => path === file.path ? file : null, read: async () => disk },
         fileManager: { async processFrontMatter(_file, update) {
-            const metadata = JSON.parse(info(disk).frontmatter); update(metadata); writes++;
+            const metadata = info(disk).exists ? JSON.parse(info(disk).frontmatter) : {}; update(metadata); writes++;
             disk = `---\n${JSON.stringify(metadata)}\n---\n${disk.slice(info(disk).contentStart)}`;
             buffer = modeData = view.data = view.lastSavedData = disk;
         } }
@@ -66,6 +66,7 @@ async function fixture(run) {
     try {
         start();
         await run({ app, api, callbacks, journal, document, view, edit, start, end,
+            setContent: text => { disk = buffer = modeData = view.data = view.lastSavedData = text; },
             clearMode: () => { modeData = ''; }, disk: () => disk, saves: () => saves, writes: () => writes,
             complete: () => stop.complete(), pending: () => stop.pendingPaths() });
     } finally {
@@ -88,6 +89,77 @@ test('quit and unload never save a cleared view mode over a valid saved editor b
         assert.equal(f.saves(), saves, 'plugin must never call native view.save');
         assert.equal(f.writes(), 0, 'shutdown performs no frontmatter writes');
         assert.ok([...f.journal.values()].some(raw => JSON.parse(raw).entries?.some(entry => entry.path === 'notes/synthetic.md')));
+    });
+});
+
+test('timestamp-only mode leaves missing and existing revision values untouched, including strings', async () => {
+    for (const revision of [undefined, 7, '1.2.3']) {
+        await fixture(async f => {
+            await f.end(); f.api.revisionMode = 'off';
+            const metadata = { id: 'keep', ...(revision === undefined ? {} : { revision }) };
+            const before = `---\n${JSON.stringify(metadata)}\n---\nbefore`;
+            f.setContent(before); f.start();
+            const after = `---\n${JSON.stringify(metadata)}\n---\nafter`;
+            // Establish a baseline, then observe a native Properties/file edit.
+            await f.callbacks.get('vault:modify')(f.view.file);
+            f.setContent(after); f.view.file.stat.mtime += 1000;
+            await f.callbacks.get('vault:modify')(f.view.file);
+            await f.complete();
+            const written = JSON.parse(info(f.disk()).frontmatter);
+            assert.equal(written.revision, revision); assert.equal(Object.hasOwn(written, 'revision'), revision !== undefined);
+            assert.equal(written.created, written.updated); assert.equal(written.id, 'keep');
+            assert.ok(f.disk().endsWith('after')); assert.equal(f.writes(), 1); assert.equal(f.saves(), 0);
+            assert.deepEqual(Object.keys(written), [...Object.keys(metadata), 'created', 'updated']);
+            await f.end(); f.start(); await wait(20); assert.equal(f.writes(), 1);
+        });
+    }
+});
+
+test('timestamp-only recovery recognizes an interrupted commit that inserted created', async () => {
+    await fixture(async f => {
+        await f.end(); f.api.revisionMode = 'off';
+        f.setContent('before'); f.start();
+        await f.callbacks.get('vault:modify')(f.view.file);
+        f.setContent('after'); f.view.file.stat.mtime += 1000;
+        await f.callbacks.get('vault:modify')(f.view.file);
+        const process = f.app.fileManager.processFrontMatter, log = console.error;
+        f.app.fileManager.processFrontMatter = async (...args) => {
+            await process(...args);
+            void f.end(); // Teardown prevents the same flush from immediately retrying.
+            throw new Error('synthetic interruption after write');
+        };
+        try { console.error = () => {}; await f.complete(); } finally { console.error = log; }
+        assert.equal(f.writes(), 1);
+        assert.ok([...f.journal.values()].some(raw => JSON.parse(raw).entries?.some(entry => entry.path === f.view.file.path)));
+        await f.end(); f.app.fileManager.processFrontMatter = process;
+        f.start(); await wait(60);
+        assert.equal(f.writes(), 1); assert.equal(f.pending().length, 0);
+        assert.equal(Object.hasOwn(JSON.parse(info(f.disk()).frontmatter), 'revision'), false);
+    });
+});
+
+test('timestamp-only editor completion updates the timestamp without incrementing the existing revision', async () => {
+    await fixture(async f => {
+        await f.end(); f.api.revisionMode = 'off'; f.start();
+        f.edit(); await f.view.save(); await f.complete();
+        const metadata = JSON.parse(info(f.disk()).frontmatter);
+        assert.equal(metadata.revision, 1); assert.equal(metadata.created, '2020-01-01');
+        assert.equal(metadata.updated, new Date(f.view.file.stat.mtime).toISOString());
+        assert.equal(f.writes(), 1); assert.equal(f.saves(), 1);
+    });
+});
+
+test('timestamp-only unchanged content and complete property undo produce no write', async () => {
+    await fixture(async f => {
+        await f.end(); f.api.revisionMode = 'off'; f.start();
+        const before = f.disk();
+        await f.callbacks.get('vault:modify')(f.view.file);
+        await f.complete(); assert.equal(f.writes(), 0);
+        f.setContent(before.replace('"revision":1', '"revision":"manual"'));
+        await f.callbacks.get('vault:modify')(f.view.file);
+        assert.equal(f.pending().length, 1);
+        f.setContent(before); await f.callbacks.get('vault:modify')(f.view.file); await f.complete();
+        assert.equal(f.disk(), before); assert.equal(f.writes(), 0); assert.equal(f.pending().length, 0);
     });
 });
 

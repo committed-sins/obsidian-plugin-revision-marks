@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.5
+
+- Add a Revision tracking dropdown with Off and Counter; Counter remains the default for existing and new installations.
+- Off keeps content-aware creation/update timestamps without adding, validating or changing a revision value. Existing revision fields become ordinary content and retain their placement.
+- Isolate timestamp-only recovery state and refuse mode changes while previous sessions remain pending. Preserve interrupted-commit recovery and the existing shutdown safeguards.
+
 ## 0.1.4
 
 - Rename the plugin to Revision Marks, with plugin ID `revision-marks` and repository `obsidian-plugin-revision-marks`.

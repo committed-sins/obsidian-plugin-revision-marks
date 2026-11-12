@@ -55,6 +55,12 @@ test("comparison ignores owned metadata and property order, but retains meaningf
     assert.notEqual(comparableContent(note("text", initial), api), comparableContent(note("text", { ...initial, created: "today" }), api));
 });
 
+test('a disabled revision property becomes meaningful content rather than owned metadata', () => {
+    const off = { ...api, revisionMode: 'off' };
+    assert.notEqual(comparableContent(note('body', initial), off), comparableContent(note('body', { ...initial, updated_count: 'manual' }), off));
+    assert.equal(comparableContent(note('body', initial), off), comparableContent(note('body', { ...initial, updated: 'later' }), off));
+});
+
 test("many edits/checkpoints and manual saves count once only after leaving; last edit time is used", async () => {
     const f = fixture();
     f.edit(note("changed", initial)); await f.tracker.checkpoint();

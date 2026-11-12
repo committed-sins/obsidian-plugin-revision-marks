@@ -7,14 +7,14 @@ import { normalizeSettings } from '../src/settings.mjs';
 import { addSessionProperties } from '../src/frontmatter-order.mjs';
 
 function fixture(data = {}) {
-    const events = [], notices = [], commands = [];
+    const events = [], notices = [], commands = [], tabs = [];
     let ready;
     class Plugin {
         app = { workspace: { onLayoutReady: callback => { ready = callback; }, getActiveFile: () => ({ path: 'notes/Example.md' }) } };
         async loadData() { return data; }
         async saveData(value) { events.push(['save-settings', value]); }
         addCommand(command) { commands.push(command); }
-        addSettingTab() {}
+        addSettingTab(tab) { tabs.push(tab); }
     }
     const api = {
         Plugin, PluginSettingTab: class { constructor(app, plugin) { this.app = app; this.plugin = plugin; } },
@@ -29,7 +29,7 @@ function fixture(data = {}) {
     };
     const PluginClass = createPluginClass(api, start);
     const plugin = new PluginClass();
-    return { plugin, events, notices, commands, ready: async () => { ready(); await plugin.restartQueue; } };
+    return { plugin, api, tabs, events, notices, commands, ready: async () => { ready(); await plugin.restartQueue; } };
 }
 
 test('standalone lifecycle waits for layout, supplies its own owner, and completes through commands', async () => {
@@ -76,9 +76,47 @@ test('invalid settings fail without starting or overwriting recovery state', asy
     assert.equal(f.events.length, 0); assert.equal(f.notices.length, 1);
     assert.deepEqual(normalizeSettings({ excludedFolders: [] }).excludedFolders, []);
     assert.deepEqual(normalizeSettings().properties, { created: 'created', updated: 'updated', revision: 'revision' });
+    assert.equal(normalizeSettings().revisionMode, 'counter');
+    assert.equal(normalizeSettings({ revisionMode: 'off' }).revisionMode, 'off');
+    assert.throws(() => normalizeSettings({ revisionMode: 'semver' }), /Revision mode/);
     assert.throws(() => normalizeSettings({ properties: { created: '' } }), /non-empty/);
     assert.throws(() => normalizeSettings({ properties: { created: 'same', updated: 'same' } }), /distinct/);
     assert.throws(() => normalizeSettings({ properties: { revision: '__proto__' } }), /non-empty/);
+});
+
+test('revision dropdown defaults to Counter and applies Off with a disabled property-name input', async () => {
+    const f = fixture(), controls = new Map();
+    f.api.Setting = class {
+        setName(name) { this.name = name; return this; }
+        setDesc() { return this; }
+        control(fn) {
+            const control = { options: {}, addOption(key, label) { this.options[key] = label; return this; },
+                setValue(value) { this.value = value; return this; }, onChange(fn) { this.change = fn; return this; },
+                setDisabled(value) { this.disabled = value; return this; }, setButtonText() { return this; },
+                setCta() { return this; }, onClick(fn) { this.click = fn; return this; } };
+            controls.set(this.name, control); fn(control); return this;
+        }
+        addDropdown(fn) { return this.control(fn); } addText(fn) { return this.control(fn); }
+        addTextArea(fn) { return this.control(fn); } addButton(fn) { return this.control(fn); }
+    };
+    await f.plugin.onload(); await f.ready();
+    f.tabs[0].containerEl = { empty() {}, addClass() {}, createEl() {} }; f.tabs[0].display();
+    const mode = controls.get('Revision tracking'), name = controls.get('Revision property');
+    assert.equal(mode.value, 'counter'); assert.deepEqual(mode.options, { off: 'Off', counter: 'Counter' });
+    mode.change('off'); assert.equal(name.disabled, true); assert.equal(f.plugin.settings.revisionMode, 'counter');
+    await controls.get('Apply settings').click();
+    assert.equal(f.plugin.settings.revisionMode, 'off'); assert.equal(f.events.at(-1)[1].revisionMode, 'off');
+    await f.plugin.onunload();
+});
+
+test('changing revision mode is refused while old sessions remain pending', async () => {
+    const f = fixture(); await f.plugin.onload(); await f.ready();
+    f.plugin.runtime.pendingPaths = () => ['notes/Unfinished.md'];
+    await assert.rejects(f.plugin.applySettings({ revisionMode: 'off' }), /Pending sessions remain/);
+    assert.equal(f.plugin.settings.revisionMode, 'counter');
+    assert.equal(f.events.at(-1)[1].revisionMode, 'counter');
+    assert.equal(f.events.some(event => event[0] === 'save-settings'), false);
+    await f.plugin.onunload();
 });
 
 test('completing a partial block preserves unrelated values and unusual own property names safely', () => {

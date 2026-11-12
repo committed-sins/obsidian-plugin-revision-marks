@@ -2,7 +2,7 @@
 
 Track meaningful editing sessions and mark what changed.
 
-**Status: standalone development preview, version 0.1.4. Not yet released or submitted to the community directory. Desktop and Android live validation remains pending. Versions 0.1.0 and 0.1.1 have an unsafe shutdown save path; do not use them.**
+**Status: standalone development preview, version 0.1.5. Not yet released or submitted to the community directory. Desktop and Android live validation remains pending. Versions 0.1.0 and 0.1.1 have an unsafe shutdown save path; do not use them.**
 
 Revision Marks tracks changed editing sessions instead of individual autosaves. Timestamps and revision counts update when you leave or explicitly save a note, keeping metadata writes out of your typing flow. Unchanged content and complete undo produce no update.
 
@@ -12,7 +12,7 @@ Revision Marks tracks changed editing sessions instead of individual autosaves. 
 - On normal desktop quit, wait for Obsidian's registered native saves, then complete safe metadata updates before allowing the window to close.
 - On plugin unload or mobile backgrounding, checkpoint pending metadata work. Complete it after the next safe startup or foreground return; this also recovers deferred desktop work.
 - Compare the note body and frontmatter. Unchanged content or a complete undo must not change either managed field.
-- Make all three property names configurable. Defaults are `created`, `updated`, `revision`; the update/counter fields are excluded from content comparison.
+- Make all three property names configurable. Defaults are `created`, `updated`, `revision`; enabled update/counter fields are excluded from content comparison. With revision tracking off, the revision field is ordinary content.
 - If the creation property is absent at a changed session's commit, fill it with the final updated value. Preserve an existing creation value.
 - Set the timestamp from the saved file's local modification time before writing metadata, and increment the counter once.
 - Observe edits through the Markdown editor, Bases, Properties, and external file changes.
@@ -52,6 +52,8 @@ Only the three artifacts are copied to `<vault>/.obsidian/plugins/revision-marks
 
 ## Settings and commands
 
+- **Revision tracking:** `Counter` (default) keeps the existing increment-per-changed-session behavior. `Off` updates timestamps only: existing revision values and their placement are preserved, and no revision property is added. The revision property-name input is disabled while tracking is off.
+- Apply mode changes after pending sessions complete under the previous mode. Recovery state is isolated by mode; an unfinished session blocks a mode change rather than being reinterpreted.
 - Defaults: `created`, `updated`, `revision`, ISO timestamps with local timezone, and exclusions for `archives`, `scripts`, `libraries`, `templates`, `inbound`.
 - Configure the three distinct top-level property names and excluded folders. Use `updated_count` or `updated_revision` instead of `revision` if preferred. Names apply to future tracking; existing note fields are not renamed or migrated automatically.
 - Missing properties are added as one local block; the previous global frontmatter-order setting has been removed. Applying settings completes pending sessions under the previous names first.

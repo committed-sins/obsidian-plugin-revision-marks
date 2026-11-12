@@ -2,6 +2,7 @@ import { EXCLUDED_FOLDERS } from './edit-sessions.mjs';
 import { DEFAULT_PROPERTIES, normalizeProperties } from './properties.mjs';
 
 export const DEFAULT_SETTINGS = Object.freeze({
+    revisionMode: 'counter',
     excludedFolders: EXCLUDED_FOLDERS,
     properties: DEFAULT_PROPERTIES
 });
@@ -15,5 +16,7 @@ export function normalizeSettings(value = {}) {
         throw new Error('Excluded folders must be relative vault folders, one per line.');
     }
     const properties = normalizeProperties(value.properties);
-    return { excludedFolders: [...new Set(excludedFolders)], properties };
+    const revisionMode = value.revisionMode ?? DEFAULT_SETTINGS.revisionMode;
+    if (!['off', 'counter'].includes(revisionMode)) throw new Error('Revision mode must be off or counter.');
+    return { excludedFolders: [...new Set(excludedFolders)], properties, revisionMode };
 }

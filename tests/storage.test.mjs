@@ -15,6 +15,16 @@ test('property-name mappings have separate recovery namespaces', () => {
     assert.notEqual(sessionStorageKey('vault', defaults), sessionStorageKey('other-vault', defaults));
 });
 
+test('timestamp-only state is separate and cannot import pending counter intentions', () => {
+    const f = fixture();
+    const counter = sessionStorageKey('vault', defaults), off = sessionStorageKey('vault', defaults, 'off');
+    assert.notEqual(off, counter);
+    f.values.set(counter, 'pending counter journal');
+    f.values.set(counter.replace('revision-marks.v2:', 'session-marks.v2:'), 'old counter journal');
+    assert.equal(prepareSessionStorage(f.storage, 'vault', defaults, 'off'), off);
+    assert.equal(f.values.has(off), false); assert.equal(f.values.get(counter), 'pending counter journal');
+});
+
 test('renaming copies the exact property-mapped Session Marks journal and baselines, retaining originals', () => {
     const f = fixture();
     const names = { created: 'born', updated: 'touched', revision: 'updated_revision' };

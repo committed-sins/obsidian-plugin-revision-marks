@@ -1,7 +1,7 @@
 // One metadata update per completed, genuinely changed editor session.
 // Dependencies are injected so the state machine can also be tested outside Obsidian.
 export const EXCLUDED_FOLDERS = ["archives", "scripts", "libraries", "templates", "inbound"];
-import { propertyNames } from './properties.mjs';
+import { propertyNames, revisionEnabled } from './properties.mjs';
 import { addSessionProperties } from './frontmatter-order.mjs';
 import { prepareSessionStorage } from './storage.mjs';
 export const eligibleNote = (path, excludedFolders = EXCLUDED_FOLDERS) => path.endsWith(".md") && !excludedFolders.some(folder => path === folder || path.startsWith(folder + "/"));
@@ -18,7 +18,7 @@ export function comparableContent(text, api, comparisonVersion = 2, overrides = 
         return value;
     };
     const names = propertyNames(api);
-    const relevant = Object.fromEntries(Object.entries({ ...properties, ...overrides }).filter(([key]) => key !== names.updated && key !== names.revision && !(comparisonVersion === 1 && key === names.created)));
+    const relevant = Object.fromEntries(Object.entries({ ...properties, ...overrides }).filter(([key]) => key !== names.updated && !(revisionEnabled(api) && key === names.revision) && !(comparisonVersion === 1 && key === names.created)));
     return JSON.stringify(stable(relevant)) + "\n" + (info.exists ? text.slice(info.contentStart) : text);
 }
 
@@ -26,7 +26,7 @@ export function metadataOf(text, api) {
     const info = api.getFrontMatterInfo(text);
     const fm = info.exists ? api.parseYaml(info.frontmatter) ?? {} : {};
     const names = propertyNames(api);
-    const count = fm[names.revision] ?? 0;
+    const count = revisionEnabled(api) ? fm[names.revision] ?? 0 : 0;
     if (!Number.isSafeInteger(count) || count < 0) throw new Error(`${names.revision} must be a non-negative integer`);
     return { count, updated: fm[names.updated] instanceof Date ? fm[names.updated].toISOString() : fm[names.updated] ?? null,
         hasCreated: Object.hasOwn(fm, names.created), created: fm[names.created] instanceof Date ? fm[names.created].toISOString() : fm[names.created] ?? null };
@@ -188,7 +188,7 @@ export function createSessionTracker({ api, storage, storageKey, read, write, ex
         const updateTimestamp = !Number.isFinite(existingTime) || existingTime < proposedTime;
         // Compare instants, not timezone spellings; never move a valid stamp backwards.
         // Compare the formatted value so sub-second mtime differences don't cause rewrites.
-        record.intent = { count: record.intent?.count ?? metadata.count + 1,
+        record.intent = { count: revisionEnabled(api) ? record.intent?.count ?? metadata.count + 1 : 0,
             updated: updateTimestamp ? proposed : metadata.updated, updateTimestamp };
         record.intent.addCreated = !metadata.hasCreated;
         record.intent.created = metadata.hasCreated ? metadata.created : record.intent.updated;
@@ -281,7 +281,7 @@ export function startEditSessions(app, api) {
     };
     const names = propertyNames(api);
     const storageKey = prepareSessionStorage(globalThis.localStorage,
-        app.vault.adapter.getBasePath?.() ?? app.vault.getName(), names);
+        app.vault.adapter.getBasePath?.() ?? app.vault.getName(), names, api.revisionMode);
     // Never call TextFileView.save: its mode may already be cleared during unload,
     // even while editor.getValue() still exposes the previous full document.
     const waitForNativeSave = async (path, shutdown = false) => {
@@ -326,7 +326,7 @@ export function startEditSessions(app, api) {
                 await app.fileManager.processFrontMatter(file, fm => {
                     if (!context.canWrite()) throw new Error(`${path} changed during metadata write`);
                     checkBuffers();
-                    const count = fm[names.revision] ?? 0;
+                    const count = revisionEnabled(api) ? fm[names.revision] ?? 0 : 0;
                     const updated = fm[names.updated] instanceof Date ? fm[names.updated].toISOString() : fm[names.updated] ?? null;
                     if (count !== expected.count || updated !== expected.updated) throw new Error(`${path} metadata changed concurrently`);
                     const hasCreated = Object.hasOwn(fm, names.created);
@@ -334,8 +334,8 @@ export function startEditSessions(app, api) {
                     if (hasCreated !== expected.hasCreated || JSON.stringify(created) !== JSON.stringify(expected.created)) throw new Error(`${path} creation metadata changed concurrently`);
                     const values = { [names.created]: hasCreated ? fm[names.created] : intent.created,
                         [names.updated]: intent.updateTimestamp === false ? fm[names.updated] : intent.updated,
-                        [names.revision]: intent.count };
-                    addSessionProperties(fm, values, names);
+                        ...(revisionEnabled(api) ? { [names.revision]: intent.count } : {}) };
+                    addSessionProperties(fm, values, names, api.revisionMode);
                 });
             } finally { writing.delete(path); }
         }
