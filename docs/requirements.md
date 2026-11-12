@@ -4,7 +4,7 @@
 
 A session starts with an actual content change and ends when the user leaves/closes the note, explicitly saves, quits Obsidian, or backgrounds/unfocuses the mobile activity. Autosave alone does not end a session. Continuing after an explicit save starts another session. Switching between two views of the same note is not a boundary.
 
-Since 0.1.2, quit/unload/background boundaries only checkpoint pending work. Metadata commits wait for a safe startup or foreground return and native body persistence. Never call a view's save method or initiate note writes during teardown. Completion commands retain unsaved sessions until native persistence finishes.
+Since 0.1.3, normal desktop quit checkpoints pending work, waits for Obsidian's registered native saves, then completes guarded metadata commits before exit. Capture the existing quit-task aggregate before adding our task, and permit writes only for that dedicated completion. Never call a view's save method. Plugin unload, mobile backgrounding, missing task support and unsafe/failed saves retain recovery work for the next safe startup or foreground return. Completion commands retain unsaved sessions until native persistence finishes.
 
 ## Content and metadata
 
@@ -26,7 +26,7 @@ For external changes, require a known content baseline. If content changed while
 - Persist a write intention before the metadata commit and recognize completed intentions after restart.
 - Do not overwrite divergent, dirty or stale editor buffers.
 - Recheck for edits arriving during completion.
-- Await the journal checkpoint on normal quit when Obsidian provides that opportunity; retain recovery for interruptions.
+- Await native saves and safe metadata completion on normal desktop quit; retain the journal checkpoint and recovery for interruptions.
 - Treat Android backgrounding as best effort, not a guarantee against immediate process termination.
 - Do not claim atomic multi-device counters or that copied filesystem timestamps always represent human edit time.
 

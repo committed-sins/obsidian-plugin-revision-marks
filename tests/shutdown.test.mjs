@@ -9,6 +9,15 @@ const info = text => {
 };
 const note = body => `---\n${JSON.stringify({ created: '2020-01-01', updated: '2020-01-01', revision: 1 })}\n---\n${body}`;
 
+// Matches Obsidian 1.15's quit task collector, including immediate add execution
+// and the snapshot taken by Promise.all in promise().
+class QuitTasks {
+    promises = [];
+    add(fn) { this.promises.push(fn()); }
+    addPromise(promise) { this.promises.push(promise); }
+    promise() { return Promise.all(this.promises); }
+}
+
 async function fixture(run) {
     const originals = new Map(['localStorage', 'window', 'document'].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
     const callbacks = new Map(), journal = new Map();
@@ -56,7 +65,7 @@ async function fixture(run) {
     const end = async () => { const previous = stop; stop = undefined; await previous?.(); };
     try {
         start();
-        await run({ app, callbacks, journal, document, view, edit, start, end,
+        await run({ app, api, callbacks, journal, document, view, edit, start, end,
             clearMode: () => { modeData = ''; }, disk: () => disk, saves: () => saves, writes: () => writes,
             complete: () => stop.complete(), pending: () => stop.pendingPaths() });
     } finally {
@@ -173,5 +182,116 @@ test('quit between processFrontMatter scheduling and callback prevents metadata 
         const tasks = []; f.callbacks.get('workspace:quit')({ add: fn => tasks.push(fn()) });
         release(); await Promise.all([completion, ...tasks]);
         assert.equal(f.disk(), saved); assert.equal(f.writes(), 0); assert.equal(f.pending().length, 1);
+    });
+});
+
+test('desktop quit waits for native tasks and metadata persistence before allowing exit, without saving twice', async () => {
+    await fixture(async f => {
+        f.api.Platform.isMobile = false;
+        f.edit();
+        let releaseNative, releaseMetadata, metadataEntered;
+        const nativeGate = new Promise(resolve => { releaseNative = resolve; });
+        const metadataGate = new Promise(resolve => { releaseMetadata = resolve; });
+        const entered = new Promise(resolve => { metadataEntered = resolve; });
+        const process = f.app.fileManager.processFrontMatter;
+        f.app.fileManager.processFrontMatter = async (...args) => {
+            metadataEntered(); await metadataGate; return process(...args);
+        };
+        const tasks = new QuitTasks();
+        tasks.addPromise(nativeGate.then(() => f.view.save())); // Core handler precedes plugin handler.
+        f.callbacks.get('workspace:quit')(tasks);
+        let exited = false;
+        const exit = tasks.promise().then(() => { exited = true; });
+        await wait(20); assert.equal(exited, false); assert.equal(f.writes(), 0); assert.equal(f.saves(), 0);
+        releaseNative(); await entered;
+        assert.equal(exited, false, 'quit remains blocked until metadata is persisted');
+        assert.equal(f.saves(), 1); assert.equal(f.writes(), 0);
+        releaseMetadata(); await exit;
+        assert.equal(f.writes(), 1); assert.equal(f.saves(), 1); assert.equal(f.pending().length, 0);
+        assert.equal(JSON.parse(info(f.disk()).frontmatter).revision, 2);
+        assert.ok(f.disk().endsWith('edited body must survive'));
+        await f.end(); f.start(); await wait(60); assert.equal(f.writes(), 1, 'restart does not double count');
+    });
+});
+
+test('desktop quit skips cleared views, retains recovery and never calls view.save', async () => {
+    await fixture(async f => {
+        f.api.Platform.isMobile = false;
+        f.edit(); await f.view.save(); const saved = f.disk(); f.clearMode();
+        const tasks = new QuitTasks(); f.callbacks.get('workspace:quit')(tasks); await tasks.promise();
+        assert.equal(f.disk(), saved); assert.equal(f.writes(), 0); assert.equal(f.saves(), 1);
+        assert.equal(f.pending().length, 1);
+    });
+});
+
+test('a rejected native quit save leaves metadata pending and does not hang the plugin task', async () => {
+    await fixture(async f => {
+        f.api.Platform.isMobile = false;
+        f.edit();
+        const saved = f.disk(), tasks = new QuitTasks();
+        const originalError = console.error;
+        try {
+            console.error = () => {};
+            tasks.addPromise(Promise.reject(new Error('synthetic native write failure')));
+            f.callbacks.get('workspace:quit')(tasks);
+            await assert.rejects(tasks.promise(), /synthetic native write failure/);
+            await Promise.allSettled(tasks.promises);
+        } finally { console.error = originalError; }
+        assert.equal(f.disk(), saved); assert.equal(f.writes(), 0); assert.equal(f.pending().length, 1);
+    });
+});
+
+test('plugin unload while desktop quit waits cancels metadata completion', async () => {
+    await fixture(async f => {
+        f.api.Platform.isMobile = false;
+        f.edit(); await f.view.save(); const saved = f.disk();
+        let release;
+        const tasks = new QuitTasks(); tasks.addPromise(new Promise(resolve => { release = resolve; }));
+        f.callbacks.get('workspace:quit')(tasks);
+        await f.end(); release(); await tasks.promise();
+        assert.equal(f.disk(), saved); assert.equal(f.writes(), 0);
+    });
+});
+
+test('duplicate desktop quit events join the same completion task without incrementing twice', async () => {
+    await fixture(async f => {
+        f.api.Platform.isMobile = false;
+        f.edit(); await f.view.save();
+        const tasks = new QuitTasks();
+        f.callbacks.get('workspace:quit')(tasks); f.callbacks.get('workspace:quit')(tasks);
+        await tasks.promise(); assert.equal(f.writes(), 1); assert.equal(f.saves(), 1);
+    });
+});
+
+test('desktop quit completes multiple native-saved notes, including Properties changes', async () => {
+    await fixture(async f => {
+        f.api.Platform.isMobile = false;
+        const otherFile = { path: 'notes/other.md', stat: { mtime: 1730000000000 } };
+        let otherDisk = note('other body'), otherBuffer = otherDisk, otherWrites = 0;
+        const otherView = { file: otherFile, dirty: false, editor: { getValue: () => otherBuffer }, getViewData: () => otherBuffer };
+        const lookup = f.app.vault.getAbstractFileByPath, read = f.app.vault.read;
+        const process = f.app.fileManager.processFrontMatter;
+        f.app.workspace.iterateAllLeaves = fn => { fn({ view: f.view }); fn({ view: otherView }); };
+        f.app.vault.getAbstractFileByPath = path => path === otherFile.path ? otherFile : lookup(path);
+        f.app.vault.read = file => file === otherFile ? Promise.resolve(otherDisk) : read(file);
+        f.app.fileManager.processFrontMatter = async (file, update) => {
+            if (file !== otherFile) return process(file, update);
+            const metadata = JSON.parse(info(otherDisk).frontmatter); update(metadata); otherWrites++;
+            otherDisk = otherBuffer = `---\n${JSON.stringify(metadata)}\n---\n${otherDisk.slice(info(otherDisk).contentStart)}`;
+        };
+        await f.callbacks.get('vault:modify')(otherFile); // Establish a known baseline.
+        f.edit();
+        const tasks = new QuitTasks();
+        tasks.addPromise(Promise.resolve().then(async () => {
+            await f.view.save();
+            otherDisk = otherBuffer = otherDisk.replace('"revision":1', '"revision":1,"tags":["property-edit"]');
+            otherFile.stat.mtime += 1000;
+            await f.callbacks.get('vault:modify')(otherFile);
+        }));
+        f.callbacks.get('workspace:quit')(tasks); await tasks.promise();
+        assert.equal(f.writes(), 1); assert.equal(otherWrites, 1); assert.equal(f.pending().length, 0);
+        assert.equal(JSON.parse(info(otherDisk).frontmatter).revision, 2);
+        assert.deepEqual(JSON.parse(info(otherDisk).frontmatter).tags, ['property-edit']);
+        assert.ok(otherDisk.endsWith('other body')); assert.equal(f.saves(), 1);
     });
 });

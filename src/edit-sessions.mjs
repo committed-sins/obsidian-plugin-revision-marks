@@ -140,7 +140,7 @@ export function createSessionTracker({ api, storage, storageKey, read, write, ex
             initial: { count: previous.count, updated: previous.updated }, editedAt, comparisonVersion: 2, source: "file" } });
         save();
     });
-    const finish = (path, { force = false } = {}) => enqueue(async () => {
+    const finish = (path, { force = false, shutdown = false } = {}) => enqueue(async () => {
         if (!available || (!force && isActive(path))) return;
         const session = sessions.get(path);
         if (!session) return;
@@ -151,7 +151,7 @@ export function createSessionTracker({ api, storage, storageKey, read, write, ex
         if (!record || !eligible(path) || !exists(path)) {
             sessions.delete(path); save(); return;
         }
-        const loaded = await read(path, { saveEditors: record.source !== "file" });
+        const loaded = await read(path, { saveEditors: record.source !== "file", shutdown });
         const text = typeof loaded === "string" ? loaded : loaded.text;
         const mtime = typeof loaded === "string" ? undefined : loaded.mtime;
         if (!canWrite()) { save(); return; }
@@ -197,7 +197,7 @@ export function createSessionTracker({ api, storage, storageKey, read, write, ex
         if (!Number.isSafeInteger(record.intent.count)) throw new Error("updated_count overflow");
         save(); // Write-ahead record: retry must never increment twice.
         if (!canWrite()) return;
-        await write(path, record.intent, metadata, contentHash, { canWrite, force, comparisonVersion: record.comparisonVersion });
+        await write(path, record.intent, metadata, contentHash, { canWrite, force, shutdown, comparisonVersion: record.comparisonVersion });
         remember(path, record.intent.postCommitHash, record.intent, mtime);
         if (session.revision === revision) sessions.delete(path);
         else {
@@ -248,11 +248,14 @@ export function startEditSessions(app, api) {
     }
     const slot = owner[slotKey];
     let stopped = false, closing = false, suspended = globalThis.document?.visibilityState === 'hidden';
+    let shutdownCompletion = false, quitPromise;
     let checkpointTimer, leavingTimer, initializationTimer;
     const completionRequests = new Set();
     const deferred = message => Object.assign(new Error(message), { code: 'SESSION_MARKS_DEFERRED' });
-    const assertRunning = () => {
-        if (stopped || closing || suspended) throw deferred('Session completion deferred until the app is active');
+    const assertRunning = (shutdown = false) => {
+        if (stopped || ((closing || suspended) && !(shutdown && shutdownCompletion))) {
+            throw deferred('Session completion deferred until the app is active');
+        }
     };
     let diskQueue = Promise.resolve();
     let flushQueue = Promise.resolve();
@@ -281,14 +284,14 @@ export function startEditSessions(app, api) {
         app.vault.adapter.getBasePath?.() ?? app.vault.getName(), names);
     // Never call TextFileView.save: its mode may already be cleared during unload,
     // even while editor.getValue() still exposes the previous full document.
-    const waitForNativeSave = async path => {
-        assertRunning();
+    const waitForNativeSave = async (path, shutdown = false) => {
+        assertRunning(shutdown);
         for (const view of viewsFor(path)) {
-            while (view.savePromise) { await view.savePromise; assertRunning(); }
+            while (view.savePromise) { await view.savePromise; assertRunning(shutdown); }
         }
     };
-    const checkViews = (path, disk, comparisonVersion) => {
-        assertRunning();
+    const checkViews = (path, disk, comparisonVersion, shutdown = false) => {
+        assertRunning(shutdown);
         const comparable = text => comparisonVersion === undefined ? text.replace(/\r\n?/g, '\n') : comparableContent(text, api, comparisonVersion);
         for (const view of viewsFor(path)) {
             if (view.dirty === true || view.savePromise || view.data === null || view.lastSavedData === null ||
@@ -301,22 +304,22 @@ export function startEditSessions(app, api) {
     const tracker = createSessionTracker({
         api, storage: globalThis.localStorage, storageKey, isActive: blocked, report, isEligible: eligible,
         exists: path => Boolean(fileAt(path)),
-        read: async path => {
-            await waitForNativeSave(path);
+        read: async (path, { shutdown = false } = {}) => {
+            await waitForNativeSave(path, shutdown);
             const file = fileAt(path);
             const text = await app.vault.read(file);
-            checkViews(path, text);
+            checkViews(path, text, undefined, shutdown);
             return { text, mtime: file.stat?.mtime };
         },
         write: async (path, intent, expected, expectedHash, context) => {
-            assertRunning();
+            assertRunning(context.shutdown);
             if (!context.canWrite()) throw new Error(`${path} changed during session completion; update deferred`);
             const file = fileAt(path);
             const disk = await app.vault.read(file);
             if (await sha256(comparableContent(disk, api, context.comparisonVersion)) !== expectedHash) {
                 throw new Error(`${path} changed before metadata write; update deferred`);
             }
-            const checkBuffers = () => checkViews(path, disk, context.comparisonVersion);
+            const checkBuffers = () => checkViews(path, disk, context.comparisonVersion, context.shutdown);
             checkBuffers();
             writing.add(path);
             try {
@@ -413,8 +416,46 @@ export function startEditSessions(app, api) {
     refs.push([app.vault, app.vault.on("delete", file => { void tracker.remove(file.path); })]);
     refs.push([app.workspace, app.workspace.on("quit", tasks => {
         closing = true; // Synchronous: invalidate already queued completions too.
-        if (tasks?.add) tasks.add(() => tracker.checkpoint());
-        else return tracker.checkpoint();
+        // Obsidian 1.15 registers native saves before plugin quit listeners.
+        // Tasks.promise() snapshots currently registered tasks. Capture it BEFORE
+        // adding ours; awaiting the aggregate afterwards would await ourselves.
+        if (!quitPromise) {
+            if (api.Platform?.isMobile || typeof tasks?.promise !== 'function' || typeof tasks?.add !== 'function') {
+                quitPromise = tracker.checkpoint();
+            } else {
+                const nativeWork = tasks.promise();
+                quitPromise = (async () => {
+                    // Attach the rejection handler immediately, even while journaling.
+                    const settledNativeWork = Promise.resolve(nativeWork).then(() => null, error => ({ error }));
+                    await tracker.checkpoint();
+                    try {
+                        const failure = await settledNativeWork;
+                        if (failure) throw failure.error;
+                        await flushQueue; await diskQueue; await tracker.idle();
+                        if (stopped) return;
+                        shutdownCompletion = true;
+                        const paths = new Set(tracker.paths());
+                        app.workspace.iterateAllLeaves(({ view }) => {
+                            if (view.editor && eligible(view.file?.path ?? '')) paths.add(view.file.path);
+                        });
+                        for (const path of paths) {
+                            try {
+                                await waitForNativeSave(path, true);
+                                const file = fileAt(path);
+                                if (!file) continue;
+                                const text = await app.vault.read(file);
+                                checkViews(path, text, undefined, true);
+                                await tracker.observe(path, text, file.stat?.mtime);
+                            } catch (error) { report(error); }
+                        }
+                        for (const path of tracker.paths()) await tracker.finish(path, { force: true, shutdown: true });
+                    } catch (error) { report(error); }
+                    finally { shutdownCompletion = false; await tracker.checkpoint(); }
+                })();
+            }
+        }
+        if (tasks?.add) tasks.add(() => quitPromise);
+        else return quitPromise;
     })]);
     const onMobileBlur = () => { suspended = true; void tracker.checkpoint(); };
     const onResume = () => {

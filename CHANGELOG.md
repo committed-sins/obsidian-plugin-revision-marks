@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.3
+
+- On normal desktop quit, await Obsidian's already-registered save tasks, then finish guarded timestamp/revision writes before allowing exit. Never invoke another view save.
+- Capture prior quit tasks before registering our own, isolate shutdown write permission from ordinary queued work, and join duplicate quit events without another increment.
+- Keep checkpoint/recovery fallback for mobile, missing task support, failed native saves, detached views and plugin unload.
+- Cover delayed native and metadata persistence, native failure, unload cancellation, multiple notes/Properties, and restart idempotence with synthetic quit-task tests. Live desktop/mobile validation remains pending.
+
 ## 0.1.2
 
 - Fix a data-loss path in 0.1.0/0.1.1: plugin-initiated `view.save()` could write an already-cleared view mode over a saved note during shutdown. Never invoke view saves from the plugin.

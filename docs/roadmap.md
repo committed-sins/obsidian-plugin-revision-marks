@@ -9,4 +9,4 @@
 7. Prepare license, CI, packaging, migration instructions and a first release.
 8. Only after explicit authorization, migrate the vault from its internal helper to the plugin; do not run both writers together.
 
-The 0.1.2 preview fixes the unsafe shutdown save path in 0.1.0/0.1.1 and is available for explicitly authorized local test-vault deployment. Exit/background metadata writes are deferred to safe recovery. The running Continuum module remains untouched; no production migration or release has been performed.
+The 0.1.3 preview retains the fix for the unsafe shutdown save path in 0.1.0/0.1.1 and is available for explicitly authorized local test-vault deployment. Normal desktop quit awaits native saves and guarded metadata completion; unload/mobile background use safe recovery. The running Continuum module remains untouched; no production migration or release has been performed.
