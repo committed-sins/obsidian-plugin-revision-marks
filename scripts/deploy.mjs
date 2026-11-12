@@ -16,7 +16,7 @@ export async function deploy({ root, configName = '.obsidian', artifacts = 'dist
     const config = await fs.realpath(path.join(vault, configName));
     if (!within(vault, config)) throw new Error('Config directory resolves outside the vault.');
     const manifest = JSON.parse(await fs.readFile(path.join(artifacts, 'manifest.json'), 'utf8'));
-    if (manifest.id !== 'session-marks') throw new Error('Expected the Session Marks plugin ID.');
+    if (manifest.id !== 'revision-marks') throw new Error('Expected the Revision Marks plugin ID.');
     const plugins = path.join(config, 'plugins');
     await fs.mkdir(plugins, { recursive: true });
     const pluginsReal = await fs.realpath(plugins);
@@ -47,5 +47,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
         root: explicitVault ?? process.env.OBSIDIAN_VAULT,
         configName: explicitConfig ?? process.env.OBSIDIAN_CONFIG_DIR ?? '.obsidian'
     });
-    console.log(`Deployed Session Marks to ${target}. Enable/reload it manually in this vault.`);
+    console.log(`Deployed Revision Marks to ${target}. Enable/reload it manually in this vault.`);
 }

@@ -33,7 +33,7 @@
   ],
   "changes": [
     "Replace Toolkit lifecycle owner with the standalone plugin owner.",
-    "Use a separate session-marks device-local storage namespace; no implicit prototype-journal migration.",
+    "Use a separate revision-marks device-local storage namespace; no implicit prototype-journal migration.",
     "Inject excluded folders from plugin settings.",
     "Replace the Templater ordering dependency with a bundled ordering helper.",
     "Expose explicit completion commands through the returned runtime handle."

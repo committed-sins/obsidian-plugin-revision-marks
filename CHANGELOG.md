@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4
+
+- Rename the plugin to Revision Marks, with plugin ID `revision-marks` and repository `obsidian-plugin-revision-marks`.
+- Copy property-mapped device-local journals and baselines from the former `session-marks` namespace on first use, retaining originals and existing new-name state.
+- Preserve settings and activation when renaming an existing test-vault installation; do not run old and new plugin IDs together.
+
 ## 0.1.3
 
 - On normal desktop quit, await Obsidian's already-registered save tasks, then finish guarded timestamp/revision writes before allowing exit. Never invoke another view save.

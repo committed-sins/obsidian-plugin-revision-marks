@@ -1,6 +1,6 @@
 # Edit sessions
 
-**Historical internal-helper reference.** The shutdown save behavior described below is unsafe and is not the standalone plugin's current behavior. Session Marks never invokes view saves. Since 0.1.3, normal desktop quit waits for native save tasks and guarded metadata commits; unload/mobile background checkpoint only, with recovery after safe startup/foreground return and native persistence. The unchanged Continuum helper has not received this fix. Use README.md for current plugin behavior.
+**Historical internal-helper reference.** The shutdown save behavior described below is unsafe and is not the standalone plugin's current behavior. Revision Marks never invokes view saves. Since 0.1.3, normal desktop quit waits for native save tasks and guarded metadata commits; unload/mobile background checkpoint only, with recovery after safe startup/foreground return and native persistence. The unchanged Continuum helper has not received this fix. Use README.md for current plugin behavior.
 
 Internal helper loaded by `scripts/startup.mjs` through CodeScript Toolkit. `created` is written by Templater / Recreate default frontmatter. Front Matter Timestamps automatic writes are disabled in its configuration; Frontmatter Date Manager must remain disabled. Restart Obsidian after installation, or reload the Toolkit startup script after ensuring competing automatic writers are off.
 

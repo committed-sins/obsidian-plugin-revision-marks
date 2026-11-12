@@ -1,7 +1,7 @@
 {
-  "id": "session-marks",
-  "name": "Session Marks",
-  "version": "0.1.3",
+  "id": "revision-marks",
+  "name": "Revision Marks",
+  "version": "0.1.4",
   "minAppVersion": "1.15.0",
   "description": "Track meaningful editing sessions and update frontmatter timestamps and revision counts when work is done.",
   "author": "Committed Sins",

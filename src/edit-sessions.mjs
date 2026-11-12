@@ -238,9 +238,9 @@ export function createSessionTracker({ api, storage, storageKey, read, write, ex
 
 export function startEditSessions(app, api) {
     const owner = api.owner;
-    if (!owner?.registerEditorExtension) throw new Error("Session Marks requires its plugin lifecycle owner");
+    if (!owner?.registerEditorExtension) throw new Error("Revision Marks requires its plugin lifecycle owner");
     const eligible = path => eligibleNote(path, api.excludedFolders ?? EXCLUDED_FOLDERS);
-    const slotKey = Symbol.for("session-marks.editorListener");
+    const slotKey = Symbol.for("revision-marks.editorListener");
     // Keep one extension per plugin instance, including settings restarts.
     if (!owner[slotKey]) {
         const slot = owner[slotKey] = { listener: null };
@@ -263,7 +263,7 @@ export function startEditSessions(app, api) {
     const reported = new Set();
     const report = error => {
         if (error?.code === 'SESSION_MARKS_DEFERRED') return;
-        console.error("Session Marks", error);
+        console.error("Revision Marks", error);
         const message = `Edit sessions: ${error.message ?? error}`;
         if (!reported.has(message)) { reported.add(message); new api.Notice(message, 10000); }
     };

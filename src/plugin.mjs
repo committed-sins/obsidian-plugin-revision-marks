@@ -6,7 +6,7 @@ export function createPluginClass(api, startRuntime = startEditSessions) {
         display() {
             const { containerEl } = this;
             containerEl.empty();
-            containerEl.addClass('session-marks-settings');
+            containerEl.addClass('revision-marks-settings');
             let excludedFolders = [...this.plugin.settings.excludedFolders];
             const properties = { ...this.plugin.settings.properties };
             for (const [role, label] of [['created', 'Created property'], ['updated', 'Updated property'], ['revision', 'Revision property']]) {
@@ -27,13 +27,13 @@ export function createPluginClass(api, startRuntime = startEditSessions) {
                 .addButton(button => button.setButtonText('Save and apply').setCta().onClick(async () => {
                     try {
                         await this.plugin.applySettings({ excludedFolders, properties });
-                        new api.Notice('Session Marks settings applied.');
+                        new api.Notice('Revision Marks settings applied.');
                     } catch (error) { new api.Notice(error.message, 10000); }
                 }));
         }
     }
 
-    return class SessionMarksPlugin extends api.Plugin {
+    return class RevisionMarksPlugin extends api.Plugin {
         settings = normalizeSettings();
         runtime = null;
         restartQueue = Promise.resolve();
@@ -44,7 +44,7 @@ export function createPluginClass(api, startRuntime = startEditSessions) {
             this.stopping = false;
             try { this.settings = normalizeSettings(await this.loadData() ?? {}); }
             catch (error) {
-                new api.Notice(`Session Marks did not start: ${error.message}`, 10000);
+                new api.Notice(`Revision Marks did not start: ${error.message}`, 10000);
                 throw error;
             }
             this.addSettingTab(new SettingsTab(this.app, this));
@@ -65,8 +65,8 @@ export function createPluginClass(api, startRuntime = startEditSessions) {
                 if (this.stopping) return;
                 this.ready = true;
                 void this.restartTracking().catch(error => {
-                    console.error('Session Marks startup failed', error);
-                    new api.Notice(`Session Marks did not start: ${error.message}`, 10000);
+                    console.error('Revision Marks startup failed', error);
+                    new api.Notice(`Revision Marks did not start: ${error.message}`, 10000);
                 });
             });
         }

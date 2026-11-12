@@ -6,12 +6,12 @@ import path from 'node:path';
 import { deploy } from '../scripts/deploy.mjs';
 
 test('deployment copies only plugin artifacts and preserves settings, activation and notes', async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'session-marks-deploy-'));
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'revision-marks-deploy-'));
     try {
         const vault = path.join(root, 'vault'), artifacts = path.join(root, 'dist');
-        const target = path.join(vault, '.obsidian', 'plugins', 'session-marks');
+        const target = path.join(vault, '.obsidian', 'plugins', 'revision-marks');
         await fs.mkdir(target, { recursive: true }); await fs.mkdir(artifacts);
-        await fs.writeFile(path.join(artifacts, 'manifest.json'), '{"id":"session-marks"}');
+        await fs.writeFile(path.join(artifacts, 'manifest.json'), '{"id":"revision-marks"}');
         await fs.writeFile(path.join(artifacts, 'main.js'), 'build'); await fs.writeFile(path.join(artifacts, 'styles.css'), 'styles');
         await fs.writeFile(path.join(target, 'data.json'), '{"keep":true}');
         await fs.writeFile(path.join(vault, '.obsidian', 'community-plugins.json'), '["existing"]');
@@ -24,7 +24,7 @@ test('deployment copies only plugin artifacts and preserves settings, activation
         await assert.rejects(deploy({ root: vault, artifacts, configName: '../outside' }), /relative directory/);
     } finally {
         const resolved = await fs.realpath(root);
-        assert.ok(path.basename(resolved).startsWith('session-marks-deploy-'));
+        assert.ok(path.basename(resolved).startsWith('revision-marks-deploy-'));
         assert.equal(path.dirname(resolved), await fs.realpath(os.tmpdir()));
         await fs.rm(resolved, { recursive: true });
     }

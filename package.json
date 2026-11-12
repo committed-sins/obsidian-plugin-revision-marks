@@ -1,6 +1,6 @@
 {
-  "name": "obsidian-plugin-session-marks",
-  "version": "0.1.3",
+  "name": "obsidian-plugin-revision-marks",
+  "version": "0.1.4",
   "private": true,
   "type": "module",
   "description": "Content-aware editing sessions, timestamps and revision counts for Obsidian.",
@@ -8,7 +8,7 @@
   "author": "Michael J. Stallinger",
   "repository": {
     "type": "git",
-    "url": "https://github.com/committed-sins/obsidian-plugin-session-marks.git"
+    "url": "https://github.com/committed-sins/obsidian-plugin-revision-marks.git"
   },
   "engines": { "node": ">=22" },
   "scripts": {

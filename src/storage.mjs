@@ -1,16 +1,27 @@
 export function sessionStorageKey(vaultIdentity, properties) {
-    return 'session-marks.v2:' + vaultIdentity + ':' + encodeURIComponent(JSON.stringify([
+    return 'revision-marks.v2:' + vaultIdentity + ':' + encodeURIComponent(JSON.stringify([
         properties.created, properties.updated, properties.revision
     ]));
 }
 
 export function prepareSessionStorage(storage, vaultIdentity, properties) {
     const key = sessionStorageKey(vaultIdentity, properties);
+    const previousKey = key.replace(/^revision-marks\.v2:/, 'session-marks.v2:');
     const legacyKey = 'session-marks.v1:' + vaultIdentity;
     const legacyNames = properties.created === 'created' && properties.updated === 'updated' && properties.revision === 'updated_count';
     const legacy = storage.getItem(legacyKey);
     if (storage.getItem(key)) {
         if (legacy && legacyNames && !storage.getItem(legacyKey + ':migrated')) storage.setItem(legacyKey + ':migrated', key);
+        return key;
+    }
+    // The rename changes identity, not fingerprints or property mappings. Copy
+    // compatible state byte-for-byte and retain originals. Copy baselines first:
+    // an interrupted copy must not make a present journal hide missing baselines.
+    const previous = storage.getItem(previousKey);
+    const previousBaselines = storage.getItem(previousKey + ':baselines');
+    if (previousBaselines) storage.setItem(key + ':baselines', previousBaselines);
+    if (previous) {
+        storage.setItem(key, previous);
         return key;
     }
     if (!legacy || storage.getItem(legacyKey + ':migrated')) return key;
@@ -22,9 +33,9 @@ export function prepareSessionStorage(storage, vaultIdentity, properties) {
     }
     // Copy, never delete, previous preview state. Only the exact old field mapping
     // can interpret its fingerprints and counters correctly.
-    storage.setItem(key, legacy);
     const baselines = storage.getItem(legacyKey + ':baselines');
     if (baselines) storage.setItem(key + ':baselines', baselines);
+    storage.setItem(key, legacy);
     storage.setItem(legacyKey + ':migrated', key);
     return key;
 }

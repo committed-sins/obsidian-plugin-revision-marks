@@ -1,10 +1,10 @@
-# Session Marks for Obsidian
+# Revision Marks for Obsidian
 
 Track meaningful editing sessions and mark what changed.
 
-**Status: standalone development preview, version 0.1.3. Not yet released or submitted to the community directory. Desktop and Android live validation remains pending. Versions 0.1.0 and 0.1.1 have an unsafe shutdown save path; do not use them.**
+**Status: standalone development preview, version 0.1.4. Not yet released or submitted to the community directory. Desktop and Android live validation remains pending. Versions 0.1.0 and 0.1.1 have an unsafe shutdown save path; do not use them.**
 
-Session Marks treats an editing session as a unit of work. It compares actual content, then updates frontmatter timestamps and a revision counter at defined session boundaries instead of repeatedly interrupting typing.
+Revision Marks treats an editing session as a unit of work. It compares actual content, then updates frontmatter timestamps and a revision counter at defined session boundaries instead of repeatedly interrupting typing.
 
 ## Behavior
 
@@ -48,7 +48,7 @@ Copy `.env.example` to the ignored `.env.local` and set `OBSIDIAN_VAULT` to the 
 npm run deploy
 ```
 
-Only the three artifacts are copied to `<vault>/.obsidian/plugins/session-marks/`. Deployment preserves plugin `data.json`, notes, workspace state and the enabled-plugin list. Enable or reload **Session Marks** manually in that test vault. No release is published by deployment.
+Only the three artifacts are copied to `<vault>/.obsidian/plugins/revision-marks/`. Deployment preserves plugin `data.json`, notes, workspace state and the enabled-plugin list. Enable or reload **Revision Marks** manually in that test vault. No release is published by deployment.
 
 ## Settings and commands
 
@@ -62,7 +62,9 @@ See [property names and insertion rules](docs/properties.md) for examples. Addit
 
 ## State and limitations
 
-Fingerprints and pending write intentions are device-local, under a `session-marks.v2:` localStorage namespace scoped to the vault and all three property names. Synced plugin settings are separate. No internal-helper journal is imported automatically, and no note text is stored in the journal. The first baseline pass is paced in the background and does not stamp existing notes.
+Formerly **Session Marks** (`session-marks`). When renaming an existing installation, move its plugin folder to `revision-marks` before deploying the new build so `data.json` and other local files stay intact. Replace the old plugin ID in activation/hotkey references while keeping its enabled/disabled state; never enable both identities. On first use, Revision Marks copies the matching `session-marks.v2:` journal and baselines to its own namespace without deleting originals or overwriting existing new-name state.
+
+Fingerprints and pending write intentions are device-local, under a `revision-marks.v2:` localStorage namespace scoped to the vault and all three property names. Synced plugin settings are separate. No internal-helper journal is imported automatically, and no note text is stored in the journal. The first baseline pass is paced in the background and does not stamp existing notes.
 
 The previous 0.1.0 plugin journal can be copied into the new namespace when using its exact `created`/`updated`/`updated_count` mapping. If old sessions remain pending under that mapping, recover them before choosing different names. Originals are retained; a mapping change cannot silently reinterpret an old counter.
 
@@ -80,9 +82,9 @@ See [the captured reference behavior](docs/reference-behavior.md) for comparison
 
 ## Identity
 
-- Name: **Session Marks**
-- Plugin ID: `session-marks`
-- Repository: `committed-sins/obsidian-plugin-session-marks`
+- Name: **Revision Marks**
+- Plugin ID: `revision-marks`
+- Repository: `committed-sins/obsidian-plugin-revision-marks`
 - Author: Michael J. Stallinger / Committed Sins
 
 The preview requires Obsidian 1.15.0 and declares mobile support. That declaration is not proof of live Android validation. A distribution license and release process remain to be chosen before publication.

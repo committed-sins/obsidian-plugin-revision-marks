@@ -1,6 +1,6 @@
 # Session properties
 
-Configure three distinct top-level names under Session Marks settings. Defaults:
+Configure three distinct top-level names under Revision Marks settings. Defaults:
 
 ```yaml
 created: 2026-11-11T15:00:00+01:00

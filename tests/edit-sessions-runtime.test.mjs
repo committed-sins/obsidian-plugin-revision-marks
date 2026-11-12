@@ -25,7 +25,7 @@ test("editor integration counts only full-note user input; leaving commits nativ
     const view = { file, editor: { getValue: () => buffer }, getViewData: () => buffer, save: async () => { saves++; disk = buffer; } };
     const app = {
         commands: { commands: { "editor:save-file": { callback: () => view.save() } } },
-        plugins: { plugins: { "session-marks": { registerEditorExtension: value => { extension = value; registrations++; } } } },
+        plugins: { plugins: { "revision-marks": { registerEditorExtension: value => { extension = value; registrations++; } } } },
         workspace: { ...emitter("workspace:"), getActiveFile: () => active, iterateAllLeaves: fn => fn({ view }) },
         vault: { ...emitter("vault:"), adapter: {}, getName: () => "test-runtime", getAbstractFileByPath: path => path === file.path ? file : null,
             read: async () => disk },
@@ -47,7 +47,7 @@ test("editor integration counts only full-note user input; leaving commits nativ
     };
     let stop;
     try {
-        stop = startEditSessions(app, { ...api, owner: app.plugins.plugins["session-marks"] });
+        stop = startEditSessions(app, { ...api, owner: app.plugins.plugins["revision-marks"] });
         dispatch(disk, note("sync"), "set"); // Programmatic replacement must not start a session.
         dispatch("a", "b", "input", note("before")); // Embedded cell is not a whole note.
         await wait(180);
@@ -64,7 +64,7 @@ test("editor integration counts only full-note user input; leaving commits nativ
         assert.deepEqual(Object.keys(JSON.parse(info(disk).frontmatter)), ["created", "updated", "updated_count", "id"]);
         assert.deepEqual(notices, []);
         await stop(); stop = undefined;
-        stop = startEditSessions(app, { ...api, owner: app.plugins.plugins["session-marks"] });
+        stop = startEditSessions(app, { ...api, owner: app.plugins.plugins["revision-marks"] });
         assert.equal(registrations, 1, "tracking restart reuses the existing CodeMirror extension");
     } finally {
         await stop?.();
@@ -100,7 +100,7 @@ test("save command and Bases/properties complete sessions; quit and Android back
     const notices = [];
     const app = {
         commands: { commands: { "editor:save-file": command } },
-        plugins: { plugins: { "session-marks": { registerEditorExtension: value => { extension = value; } } } },
+        plugins: { plugins: { "revision-marks": { registerEditorExtension: value => { extension = value; } } } },
         workspace: { ...emitter("workspace:"), getActiveFile: () => active, iterateAllLeaves: fn => fn({ view }) },
         vault: { ...emitter("vault:"), adapter: {}, getName: () => "events-runtime", getMarkdownFiles: () => [file],
             getAbstractFileByPath: path => path === file.path ? file : null, read: async () => disk },
@@ -123,7 +123,7 @@ test("save command and Bases/properties complete sessions; quit and Android back
     };
     let stop;
     try {
-        stop = startEditSessions(app, { ...api, owner: app.plugins.plugins["session-marks"] });
+        stop = startEditSessions(app, { ...api, owner: app.plugins.plugins["revision-marks"] });
         await wait(1100); // Initial baseline pass; no backdating or counting.
         assert.equal(writes, 0);
         active = { path: "views/example.base" };
@@ -150,7 +150,7 @@ test("save command and Bases/properties complete sessions; quit and Android back
         callbacks.get("workspace:quit")({ add: fn => tasks.push(fn()) });
         await Promise.all(tasks); assert.equal(fm().updated_count, 7);
         await stop();
-        stop = startEditSessions(app, { ...api, owner: app.plugins.plugins["session-marks"] });
+        stop = startEditSessions(app, { ...api, owner: app.plugins.plugins["revision-marks"] });
         await wait(60); assert.equal(fm().updated_count, 8, 'restart recovers the pending session');
         edit("before hiding"); document.visibilityState = "hidden";
         await view.save();
@@ -168,7 +168,7 @@ test("save command and Bases/properties complete sessions; quit and Android back
         await stop(); stop = undefined;
         assert.equal(fm().updated_count, 10, "plugin cleanup never writes notes");
         // Existing timestamps but no counter: create it in the central order, preserve custom values.
-        stop = startEditSessions(app, { ...api, owner: app.plugins.plugins["session-marks"] });
+        stop = startEditSessions(app, { ...api, owner: app.plugins.plugins["revision-marks"] });
         await wait(60); assert.equal(fm().updated_count, 11);
         disk = buffer = `---\n${JSON.stringify({ id: "kept", created: "2026-01-01", updated: "older", tags: ["keep"], custom: { nested: true } })}\n---\nbefore counter`;
         edit("after counter"); command.checkCallback(false); await wait(60);
@@ -179,7 +179,7 @@ test("save command and Bases/properties complete sessions; quit and Android back
         // Custom names, a single existing timestamp in the middle, and no implicit legacy-field rename.
         const customProperties = { created: 'born', updated: 'touched', revision: 'updated_revision' };
         disk = buffer = `---\n${JSON.stringify({ id: 'kept', title: 'before block', touched: 'old', custom: true, updated_count: 40 })}\n---\ncustom before`;
-        stop = startEditSessions(app, { ...api, properties: customProperties, owner: app.plugins.plugins["session-marks"] });
+        stop = startEditSessions(app, { ...api, properties: customProperties, owner: app.plugins.plugins["revision-marks"] });
         edit('custom after'); command.checkCallback(false); await wait(60);
         assert.equal(fm().born, fm().touched); assert.equal(fm().updated_revision, 1);
         assert.equal(fm().updated_count, 40, 'unconfigured legacy counter is not renamed or overwritten');
