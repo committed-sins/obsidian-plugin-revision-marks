@@ -4,6 +4,7 @@ import { copyFile, mkdir, readFile } from 'node:fs/promises';
 const manifest = JSON.parse(await readFile('manifest.json', 'utf8'));
 const pkg = JSON.parse(await readFile('package.json', 'utf8'));
 const versions = JSON.parse(await readFile('versions.json', 'utf8'));
+const license = (await readFile('LICENSE', 'utf8')).trim();
 if (
     manifest.id !== 'revision-marks' ||
     pkg.version !== manifest.version ||
@@ -21,7 +22,7 @@ await build({
     format: 'cjs',
     target: 'es2022',
     sourcemap: false,
-    banner: { js: '/* Revision Marks development build. See the source repository. */' },
+    banner: { js: `/*\n${license}\n*/` },
 });
 for (const file of ['manifest.json', 'styles.css']) await copyFile(file, 'dist/' + file);
 console.log(`Built ${manifest.name} ${manifest.version} in dist/`);

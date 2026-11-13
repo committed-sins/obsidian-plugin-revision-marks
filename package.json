@@ -1,10 +1,10 @@
 {
   "name": "obsidian-plugin-revision-marks",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "private": true,
   "type": "module",
   "description": "Content-aware editing sessions, timestamps and revision counts for Obsidian.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "author": "Michael J. Stallinger",
   "repository": {
     "type": "git",

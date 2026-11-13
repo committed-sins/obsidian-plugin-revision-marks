@@ -30,7 +30,7 @@ export class RevisionMarksSettingsTab extends PluginSettingTab
     {
         new SettingGroup(this.containerEl).addSetting((setting) =>
         {
-            setting.setName('Track editing sessions, not autosaves');
+            setting.setName('BETA · Track editing sessions, not autosaves');
             setting.setDesc(
                 'Timestamps and optional revision counts update when you leave or explicitly save a note.\n' +
                     'Unchanged content and complete undo produce no update, keeping metadata writes out of your typing flow.',

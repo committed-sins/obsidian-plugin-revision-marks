@@ -1,9 +1,9 @@
 {
   "id": "revision-marks",
   "name": "Revision Marks",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "minAppVersion": "1.15.0",
-  "description": "Track meaningful editing sessions and update frontmatter timestamps and revision counts when work is done.",
+  "description": "Beta: Update timestamps and optional revision counts after meaningful editing sessions.",
   "author": "Committed Sins",
   "authorUrl": "https://github.com/committed-sins",
   "isDesktopOnly": false

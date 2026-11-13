@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.7 — Beta
+
+- Prepare the first installable beta with MIT licensing and visible beta identification.
+- Shorten the README around behavior, installation and essential settings; move implementation and compatibility details into focused guides.
+- Include the license in the built plugin so installed copies retain the copyright and permission notice.
+- Retain the existing session, timestamp, optional counter and recovery behavior. Community-directory submission is performed by the repository owner.
+
 ## 0.1.6
 
 - Refactor the plugin and settings tab into top-level Obsidian classes with named rendering and lifecycle methods.

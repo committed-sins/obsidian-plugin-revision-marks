@@ -1,100 +1,41 @@
-# Revision Marks for Obsidian
+# Revision Marks
 
-Track meaningful editing sessions and mark what changed.
+**BETA · Requires Obsidian 1.15.0 or newer.**
 
-**Status: standalone development preview, version 0.1.6. Not yet released or submitted to the community directory. Desktop and Android live validation remains pending. Versions 0.1.0 and 0.1.1 have an unsafe shutdown save path; do not use them.**
+Update timestamps and optional revision counts at the end of a meaningful editing session. Revision Marks compares actual content and waits until you leave or explicitly save a note, keeping metadata writes out of your typing flow. Unchanged content and complete undo produce no update.
 
-Revision Marks tracks changed editing sessions instead of individual autosaves. Timestamps and revision counts update when you leave or explicitly save a note, keeping metadata writes out of your typing flow. Unchanged content and complete undo produce no update.
+## Features
 
-## Behavior
+- Track editor, Properties, Bases and external changes to Markdown notes.
+- Configure the `created`, `updated` and `revision` property names; turn counting off if preferred.
+- Fill an absent creation timestamp without replacing an existing value.
+- Complete saved sessions on desktop quit; retain pending work for recovery.
+- Preserve unrelated frontmatter and manually arranged complete property blocks.
 
-- Complete a changed session after native Obsidian persistence when leaving a note or explicitly saving it. The plugin never invokes a view's save method.
-- On normal desktop quit, wait for Obsidian's registered native saves, then complete safe metadata updates before allowing the window to close.
-- On plugin unload or mobile backgrounding, checkpoint pending metadata work. Complete it after the next safe startup or foreground return; this also recovers deferred desktop work.
-- Compare the note body and frontmatter. Unchanged content or a complete undo must not change either managed field.
-- Make all three property names configurable. Defaults are `created`, `updated`, `revision`; enabled update/counter fields are excluded from content comparison. With revision tracking off, the revision field is ordinary content.
-- If the creation property is absent at a changed session's commit, fill it with the final updated value. Preserve an existing creation value.
-- Set the timestamp from the saved file's local modification time before writing metadata, and increment the counter once.
-- Observe edits through the Markdown editor, Bases, Properties, and external file changes.
-- Avoid a second increment when an incoming change already carries a changed timestamp or counter.
-- Retain device-local fingerprints and pending write intentions for restart recovery.
-- Complete a partial session-property block in created/updated/revision order beside its first existing member, or at the bottom if none exist. Never globally reorder unrelated properties or rearrange a complete block.
-- Preserve unrelated frontmatter, note content, and user-configured exclusions. Defer unsafe writes instead of overwriting divergent editor buffers.
+## Install the beta
 
-The session boundary is the foundation. Other session-completion actions may follow later, after the timestamp/counter behavior is reliable.
+Not yet listed in the Community Plugins directory. Until approved:
 
-## Scope and status
+1. Download `main.js`, `manifest.json` and `styles.css` from the [beta release](https://github.com/committed-sins/obsidian-plugin-revision-marks/releases/tag/0.1.7).
+2. Place them in `<vault>/.obsidian/plugins/revision-marks/`.
+3. Reload Obsidian and enable **Revision Marks** in Community plugins.
 
-The standalone plugin was extracted from the current internal helper and its tests. It has its own lifecycle owner, commands, settings and a local session-field insertion helper; CodeScript Toolkit and Templater are not dependencies. Templates can continue supplying creation dates; only an absent creation property is filled by the plugin.
+Disable other automatic writers of these properties first. Existing notes are not bulk-stamped or renamed. Test disposable notes before using a working vault; Android lifecycle validation is still pending. See the [beta test guide](docs/beta-testing.md).
 
-The Continuum module remains in place and is not changed or migrated by building/deploying this preview. Do not run both writers in the same vault.
+## Settings
 
-## Build and test
+**Revision tracking:** Counter is the default; Off updates timestamps only and leaves existing revision values untouched. Property names are configurable, including `updated_count` for an existing counter. Save and apply completes pending sessions under the old settings first.
 
-Requires Node.js 22 or newer.
+The default excluded root folders are `archives`, `scripts`, `libraries`, `templates` and `inbound`. Notes at the vault root remain eligible.
 
-```sh
-npm ci
-npm run check
-```
+**Complete current session**, **Complete all sessions** and explicit **Save current file / Ctrl+S** finish changed sessions. Autosave alone does not.
 
-The check validates formatting, builds the browser-compatible CommonJS entry and runs session/recovery/runtime tests plus plugin lifecycle, ordering and deployment checks. Test fixtures contain synthetic note content only. Build artifacts are `dist/main.js`, `dist/manifest.json`, and `dist/styles.css`.
+## Development
 
-Use `npm run format` to apply the pinned dprint rules in `dprint.json` or `npm run format:check` to check them without editing. Functions, methods and classes use Allman braces (opening brace on the next line); control-flow blocks keep same-line braces. JavaScript uses four spaces, single quotes and CRLF; Markdown keeps LF. The formatter and its JavaScript plugin are pinned development dependencies and are not included in the Obsidian plugin. These conventions are also recorded in `AGENTS.md`.
+Node.js 22+: run `npm ci`, then `npm run check` for formatting, build and tests. Use `npm run format` for the configured Allman style.
 
-## Reading the source
+[Architecture](docs/architecture.md) · [Property rules](docs/properties.md) · [Development and compatibility](docs/development.md)
 
-Start with `src/main.mjs`, which exports the top-level plugin class in `src/plugin.mjs`. The settings screen lives in `src/settings-tab.mjs`. Follow `src/obsidian-runtime.mjs` for event registration and shutdown, `src/session-tracker.mjs` for session/recovery decisions, and `src/note-access.mjs` for the guarded metadata writes. The runtime exposes an explicit `stop()` / `complete()` / `pendingPaths()` object.
+## License
 
-See [architecture and module responsibilities](docs/architecture.md) for the full map and test boundaries. Existing settings and device-local recovery formats are unchanged by this separation.
-
-## Local test deployment
-
-Copy `.env.example` to the ignored `.env.local` and set `OBSIDIAN_VAULT` to the intended test vault. Then run:
-
-```sh
-npm run deploy
-```
-
-Only the three artifacts are copied to `<vault>/.obsidian/plugins/revision-marks/`. Deployment preserves plugin `data.json`, notes, workspace state and the enabled-plugin list. Enable or reload **Revision Marks** manually in that test vault. No release is published by deployment.
-
-## Settings and commands
-
-- **Revision tracking:** `Counter` (default) keeps the existing increment-per-changed-session behavior. `Off` updates timestamps only: existing revision values and their placement are preserved, and no revision property is added. The revision property-name input is disabled while tracking is off.
-- Apply mode changes after pending sessions complete under the previous mode. Recovery state is isolated by mode; an unfinished session blocks a mode change rather than being reinterpreted.
-- Defaults: `created`, `updated`, `revision`, ISO timestamps with local timezone, and exclusions for `archives`, `scripts`, `libraries`, `templates`, `inbound`.
-- Configure the three distinct top-level property names and excluded folders. Use `updated_count` or `updated_revision` instead of `revision` if preferred. Names apply to future tracking; existing note fields are not renamed or migrated automatically.
-- Missing properties are added as one local block; the previous global frontmatter-order setting has been removed. Applying settings completes pending sessions under the previous names first.
-- **Complete current session** and **Complete all sessions** are available in the command palette.
-- Explicit **Save current file** / Ctrl+S also completes a changed session; autosave alone does not.
-
-See [property names and insertion rules](docs/properties.md) for examples. Additional completion actions remain future work.
-
-## State and limitations
-
-Formerly **Session Marks** (`session-marks`). When renaming an existing installation, move its plugin folder to `revision-marks` before deploying the new build so `data.json` and other local files stay intact. Replace the old plugin ID in activation/hotkey references while keeping its enabled/disabled state; never enable both identities. On first use, Revision Marks copies the matching `session-marks.v2:` journal and baselines to its own namespace without deleting originals or overwriting existing new-name state.
-
-Fingerprints and pending write intentions are device-local, under a `revision-marks.v2:` localStorage namespace scoped to the vault and all three property names. Synced plugin settings are separate. No internal-helper journal is imported automatically, and no note text is stored in the journal. The first baseline pass is paced in the background and does not stamp existing notes.
-
-The previous 0.1.0 plugin journal can be copied into the new namespace when using its exact `created`/`updated`/`updated_count` mapping. If old sessions remain pending under that mapping, recover them before choosing different names. Originals are retained; a mapping change cannot silently reinterpret an old counter.
-
-Normal desktop quit checkpoints first, waits for previously registered quit tasks (including Obsidian's native saves), and then awaits guarded metadata commits. The prior-task aggregate is captured before registering our own task to avoid waiting on ourselves. This uses the task collector verified in Obsidian 1.15.0; without that collector, quit checkpoints only. Failed native saves, unsaved/detached/dirty/divergent views and plugin unload retain pending work for recovery. Ordinary queued completion cannot gain the desktop quit task's write permission.
-
-Pending metadata is recovered after native content persistence on the next safe startup or foreground return. The plugin does not force-save bodies. Mobile checkpointing remains best effort if the process is killed immediately. The journal contains fingerprints and metadata, not a backup of unsaved text; body persistence remains Obsidian's responsibility. Incoming changes that already modify either managed field are not counted again, but multi-device counters are not an atomic distributed counter. The explicit-save integration wraps an internal Obsidian command and awaits an existing native save promise; it needs live compatibility testing.
-
-See [the captured reference behavior](docs/reference-behavior.md) for comparison/recovery rules and focused live checks. Its internal-module names describe the source implementation; the standalone plugin uses its own namespace and lifecycle.
-
-## Design documents
-
-- [Requirements and acceptance criteria](docs/requirements.md)
-- [Architecture and extraction decisions](docs/architecture.md)
-- [Implementation roadmap](docs/roadmap.md)
-
-## Identity
-
-- Name: **Revision Marks**
-- Plugin ID: `revision-marks`
-- Repository: `committed-sins/obsidian-plugin-revision-marks`
-- Author: Michael J. Stallinger / Committed Sins
-
-The preview requires Obsidian 1.15.0 and declares mobile support. That declaration is not proof of live Android validation. A distribution license and release process remain to be chosen before publication.
+[MIT](LICENSE) · Copyright © 2026 Michael J. Stallinger
