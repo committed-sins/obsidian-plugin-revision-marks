@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.6
+
+- Refactor the plugin and settings tab into top-level Obsidian classes with named rendering and lifecycle methods.
+- Separate session/recovery decisions, Obsidian events, guarded note access and the native save-command adapter. Return an explicit runtime object instead of attaching methods to a stop function.
+- Preserve settings, recovery namespaces, note comparison rules, session boundaries and metadata output.
+- Add pinned formatting rules and module-level architecture documentation; retain all existing acceptance scenarios and add focused save-command boundary checks.
+
 ## 0.1.5
 
 - Add a Revision tracking dropdown with Off and Counter; Counter remains the default for existing and new installations.

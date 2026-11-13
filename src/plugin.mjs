@@ -1,142 +1,153 @@
-import { startEditSessions } from './edit-sessions.mjs';
+import {
+    Plugin,
+    Notice,
+    Platform,
+    editorInfoField,
+    getFrontMatterInfo,
+    parseYaml,
+    moment,
+} from 'obsidian';
+import { EditorView } from '@codemirror/view';
+import { startEditSessions } from './obsidian-runtime.mjs';
+import { RevisionMarksSettingsTab } from './settings-tab.mjs';
 import { normalizeSettings } from './settings.mjs';
 
-export function createPluginClass(api, startRuntime = startEditSessions) {
-    class SettingsTab extends api.PluginSettingTab {
-        display() {
-            const { containerEl } = this;
-            containerEl.empty();
-            containerEl.addClass('revision-marks-settings');
-            new api.SettingGroup(containerEl)
-                .addSetting(setting => setting.setName('Track editing sessions, not autosaves')
-                    .setDesc('Timestamps and optional revision counts update when you leave or explicitly save a note.\nUnchanged content and complete undo produce no update, keeping metadata writes out of your typing flow.'));
-            let excludedFolders = [...this.plugin.settings.excludedFolders];
-            let revisionMode = this.plugin.settings.revisionMode;
-            const properties = { ...this.plugin.settings.properties };
-            let revisionNameInput;
-            const configureProperty = (setting, role, label) => setting.setName(label)
-                    .setDesc('A top-level frontmatter property name. Existing properties are not renamed automatically.')
-                    .addText(input => {
-                        input.setValue(properties[role]).onChange(value => { properties[role] = value; });
-                        if (role === 'revision') { revisionNameInput = input; input.setDisabled(revisionMode === 'off'); }
-                    });
-            const timestampGroup = new api.SettingGroup(containerEl);
-            for (const [role, label] of [['created', 'Created property'], ['updated', 'Updated property']]) {
-                timestampGroup.addSetting(setting => configureProperty(setting, role, label));
-            }
-            new api.SettingGroup(containerEl)
-                .setHeading('Revision tracking')
-                .addSetting(setting => setting.setName('Mode')
-                    .setDesc('Off updates timestamps only and preserves existing revision values. Counter adds one per changed session.')
-                    .addDropdown(dropdown => dropdown.addOption('off', 'Off').addOption('counter', 'Counter')
-                        .setValue(revisionMode).onChange(value => {
-                            revisionMode = value;
-                            revisionNameInput?.setDisabled(value === 'off');
-                        })))
-                .addSetting(setting => configureProperty(setting, 'revision', 'Revision property'));
-            new api.SettingGroup(containerEl)
-                .addSetting(setting => setting.setName('Excluded folders')
-                .setDesc('One vault-relative folder per line. Each folder and its subfolders are excluded.')
-                .addTextArea(input => input.setValue(excludedFolders.join('\n')).onChange(value => {
-                    excludedFolders = value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-                })))
-                .addSetting(setting => setting.setName('Apply settings')
-                .setDesc('Completes pending editing sessions before applying the new rules.')
-                .addButton(button => button.setButtonText('Save and apply').setCta().onClick(async () => {
-                    try {
-                        await this.plugin.applySettings({ excludedFolders, properties, revisionMode });
-                        new api.Notice('Revision Marks settings applied.');
-                    } catch (error) { new api.Notice(error.message, 10000); }
-                })));
+/** Owns Obsidian registrations, persisted settings and serialized runtime restarts. */
+export default class RevisionMarksPlugin extends Plugin {
+    settings = normalizeSettings();
+    /** @type {import('./obsidian-runtime.mjs').TrackingRuntime | null} */
+    runtime = null;
+    restartQueue = Promise.resolve();
+    ready = false;
+    stopping = false;
+
+    async onload() {
+        this.stopping = false;
+        await this.loadSettings();
+        this.addSettingTab(new RevisionMarksSettingsTab(this.app, this));
+        this.registerCommands();
+        this.app.workspace.onLayoutReady(() => this.onWorkspaceReady());
+    }
+
+    async loadSettings() {
+        try {
+            const saved = await this.loadData();
+            this.settings = normalizeSettings(saved ?? {});
+        } catch (error) {
+            new Notice(`Revision Marks did not start: ${error.message}`, 10000);
+            throw error;
         }
     }
 
-    return class RevisionMarksPlugin extends api.Plugin {
-        settings = normalizeSettings();
-        runtime = null;
-        restartQueue = Promise.resolve();
-        ready = false;
-        stopping = false;
+    registerCommands() {
+        this.addCommand({
+            id: 'complete-current-session',
+            name: 'Complete current session',
+            checkCallback: (checking) => this.completeCurrentSession(checking),
+        });
+        this.addCommand({
+            id: 'complete-all-sessions',
+            name: 'Complete all sessions',
+            callback: () => this.runtime?.complete(),
+        });
+    }
 
-        async onload() {
-            this.stopping = false;
-            try { this.settings = normalizeSettings(await this.loadData() ?? {}); }
-            catch (error) {
-                new api.Notice(`Revision Marks did not start: ${error.message}`, 10000);
-                throw error;
-            }
-            this.addSettingTab(new SettingsTab(this.app, this));
-            this.addCommand({
-                id: 'complete-current-session', name: 'Complete current session',
-                checkCallback: checking => {
-                    const path = this.app.workspace.getActiveFile()?.path;
-                    if (!this.runtime || !path?.endsWith('.md')) return false;
-                    if (!checking) void this.runtime.complete(path);
-                    return true;
-                }
-            });
-            this.addCommand({
-                id: 'complete-all-sessions', name: 'Complete all sessions',
-                callback: () => this.runtime?.complete()
-            });
-            this.app.workspace.onLayoutReady(() => {
-                if (this.stopping) return;
-                this.ready = true;
-                void this.restartTracking().catch(error => {
-                    console.error('Revision Marks startup failed', error);
-                    new api.Notice(`Revision Marks did not start: ${error.message}`, 10000);
-                });
-            });
-        }
+    completeCurrentSession(checking) {
+        const path = this.app.workspace.getActiveFile()?.path;
+        if (!this.runtime || !path?.endsWith('.md')) return false;
+        if (!checking) void this.runtime.complete(path);
+        return true;
+    }
 
-        restartTracking() {
-            const restart = this.restartQueue.then(async () => {
-                const previous = this.runtime;
-                this.runtime = null;
-                await previous?.();
-                if (this.stopping || !this.ready) return;
-                this.runtime = startRuntime(this.app, {
-                    ...api, owner: this,
-                    excludedFolders: this.settings.excludedFolders,
-                    properties: this.settings.properties,
-                    revisionMode: this.settings.revisionMode,
-                    formatDate: iso => api.moment(iso).format('YYYY-MM-DDTHH:mm:ssZ')
-                });
-            });
-            this.restartQueue = restart.catch(() => {});
-            return restart;
-        }
+    onWorkspaceReady() {
+        if (this.stopping) return;
+        this.ready = true;
+        void this.restartTracking().catch((error) => {
+            console.error('Revision Marks startup failed', error);
+            new Notice(`Revision Marks did not start: ${error.message}`, 10000);
+        });
+    }
 
-        async applySettings(value) {
-            const settings = normalizeSettings(value);
-            // Finish under the old names and exclusions before changing the rules.
-            const restart = this.restartQueue.then(async () => {
-                const previous = this.runtime;
-                await previous?.complete?.();
-                if (this.stopping) return;
-                this.runtime = null;
-                await previous?.();
-                if (previous?.pendingPaths?.().length && (JSON.stringify(settings.properties) !== JSON.stringify(this.settings.properties) || settings.revisionMode !== this.settings.revisionMode)) {
-                    throw new Error('Pending sessions remain under the old property names or revision mode. Complete them before changing these settings.');
-                }
-                await this.saveData(settings);
-                this.settings = settings;
-            });
-            this.restartQueue = restart.catch(() => {});
-            try { await restart; }
-            catch (error) { await this.restartTracking(); throw error; }
-            await this.restartTracking();
-        }
+    enqueueRestart(operation) {
+        const restart = this.restartQueue.then(operation);
+        // Keep the queue usable after failure, while its caller still sees the error.
+        this.restartQueue = restart.catch(() => {});
+        return restart;
+    }
 
-        async onunload() {
-            this.stopping = true;
-            this.ready = false;
+    restartTracking() {
+        return this.enqueueRestart(async () => {
             const previous = this.runtime;
             this.runtime = null;
-            // Obsidian need not await this hook. Invalidate the writer synchronously.
-            const checkpoint = previous?.();
-            await this.restartQueue;
-            await checkpoint;
+            await previous?.stop();
+            if (this.stopping || !this.ready) return;
+
+            this.runtime = this.createRuntime({
+                owner: this,
+                EditorView,
+                editorInfoField,
+                getFrontMatterInfo,
+                parseYaml,
+                Notice,
+                Platform,
+                excludedFolders: this.settings.excludedFolders,
+                properties: this.settings.properties,
+                revisionMode: this.settings.revisionMode,
+                formatDate: (iso) => moment(iso).format('YYYY-MM-DDTHH:mm:ssZ'),
+            });
+        });
+    }
+
+    /** Allows lifecycle tests to replace the runtime without changing Obsidian's class. */
+    createRuntime(options) {
+        return startEditSessions(this.app, options);
+    }
+
+    hasTrackingRuleChanges(settings) {
+        const namesChanged =
+            JSON.stringify(settings.properties) !== JSON.stringify(this.settings.properties);
+        const modeChanged = settings.revisionMode !== this.settings.revisionMode;
+        return namesChanged || modeChanged;
+    }
+
+    async applySettings(value) {
+        const settings = normalizeSettings(value);
+        const restart = this.enqueueRestart(async () => {
+            // Complete and checkpoint under the old names/mode before replacing the rules.
+            const previous = this.runtime;
+            await previous?.complete();
+            if (this.stopping) return;
+            this.runtime = null;
+            await previous?.stop();
+
+            const hasPendingSessions = previous?.pendingPaths().length > 0;
+            if (hasPendingSessions && this.hasTrackingRuleChanges(settings)) {
+                throw new Error(
+                    'Pending sessions remain under the old property names or revision mode. ' +
+                        'Complete them before changing these settings.',
+                );
+            }
+            await this.saveData(settings);
+            this.settings = settings;
+        });
+
+        try {
+            await restart;
+        } catch (error) {
+            await this.restartTracking();
+            throw error;
         }
-    };
+        await this.restartTracking();
+    }
+
+    async onunload() {
+        this.stopping = true;
+        this.ready = false;
+        const previous = this.runtime;
+        this.runtime = null;
+        // Obsidian need not await this hook. Invalidate the writer before any await.
+        const checkpoint = previous?.stop();
+        await this.restartQueue;
+        await checkpoint;
+    }
 }

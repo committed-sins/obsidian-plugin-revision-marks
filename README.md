@@ -2,7 +2,7 @@
 
 Track meaningful editing sessions and mark what changed.
 
-**Status: standalone development preview, version 0.1.5. Not yet released or submitted to the community directory. Desktop and Android live validation remains pending. Versions 0.1.0 and 0.1.1 have an unsafe shutdown save path; do not use them.**
+**Status: standalone development preview, version 0.1.6. Not yet released or submitted to the community directory. Desktop and Android live validation remains pending. Versions 0.1.0 and 0.1.1 have an unsafe shutdown save path; do not use them.**
 
 Revision Marks tracks changed editing sessions instead of individual autosaves. Timestamps and revision counts update when you leave or explicitly save a note, keeping metadata writes out of your typing flow. Unchanged content and complete undo produce no update.
 
@@ -38,7 +38,15 @@ npm ci
 npm run check
 ```
 
-The check builds the browser-compatible CommonJS entry and runs the imported session/recovery/runtime tests plus plugin lifecycle, ordering and deployment checks. Test fixtures contain synthetic note content only. Build artifacts are `dist/main.js`, `dist/manifest.json`, and `dist/styles.css`.
+The check validates formatting, builds the browser-compatible CommonJS entry and runs session/recovery/runtime tests plus plugin lifecycle, ordering and deployment checks. Test fixtures contain synthetic note content only. Build artifacts are `dist/main.js`, `dist/manifest.json`, and `dist/styles.css`.
+
+Use `npm run format` to apply the pinned Prettier rules or `npm run format:check` to check them without editing. JavaScript uses four spaces, single quotes and CRLF; Markdown keeps LF. The formatter is a development dependency and is not included in the plugin.
+
+## Reading the source
+
+Start with `src/main.mjs`, which exports the top-level plugin class in `src/plugin.mjs`. The settings screen lives in `src/settings-tab.mjs`. Follow `src/obsidian-runtime.mjs` for event registration and shutdown, `src/session-tracker.mjs` for session/recovery decisions, and `src/note-access.mjs` for the guarded metadata writes. The runtime exposes an explicit `stop()` / `complete()` / `pendingPaths()` object.
+
+See [architecture and module responsibilities](docs/architecture.md) for the full map and test boundaries. Existing settings and device-local recovery formats are unchanged by this separation.
 
 ## Local test deployment
 

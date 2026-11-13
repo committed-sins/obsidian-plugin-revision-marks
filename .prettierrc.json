@@ -1,0 +1,13 @@
+{
+    "tabWidth": 4,
+    "printWidth": 100,
+    "singleQuote": true,
+    "trailingComma": "all",
+    "endOfLine": "crlf",
+    "overrides": [
+        {
+            "files": "*.md",
+            "options": { "endOfLine": "lf" }
+        }
+    ]
+}

@@ -1,20 +1,35 @@
 export function sessionStorageKey(vaultIdentity, properties, revisionMode = 'counter') {
-    return 'revision-marks.v2:' + vaultIdentity + ':' + encodeURIComponent(JSON.stringify([
-        properties.created, properties.updated, properties.revision
-    ])) + (revisionMode === 'off' ? ':off' : '');
+    return (
+        'revision-marks.v2:' +
+        vaultIdentity +
+        ':' +
+        encodeURIComponent(
+            JSON.stringify([properties.created, properties.updated, properties.revision]),
+        ) +
+        (revisionMode === 'off' ? ':off' : '')
+    );
 }
 
-export function prepareSessionStorage(storage, vaultIdentity, properties, revisionMode = 'counter') {
+export function prepareSessionStorage(
+    storage,
+    vaultIdentity,
+    properties,
+    revisionMode = 'counter',
+) {
     const key = sessionStorageKey(vaultIdentity, properties, revisionMode);
     // Timestamp-only fingerprints include the now unmanaged revision property.
     // Never reinterpret counter-mode baselines or pending write intentions.
     if (revisionMode === 'off') return key;
     const previousKey = key.replace(/^revision-marks\.v2:/, 'session-marks.v2:');
     const legacyKey = 'session-marks.v1:' + vaultIdentity;
-    const legacyNames = properties.created === 'created' && properties.updated === 'updated' && properties.revision === 'updated_count';
+    const legacyNames =
+        properties.created === 'created' &&
+        properties.updated === 'updated' &&
+        properties.revision === 'updated_count';
     const legacy = storage.getItem(legacyKey);
     if (storage.getItem(key)) {
-        if (legacy && legacyNames && !storage.getItem(legacyKey + ':migrated')) storage.setItem(legacyKey + ':migrated', key);
+        if (legacy && legacyNames && !storage.getItem(legacyKey + ':migrated'))
+            storage.setItem(legacyKey + ':migrated', key);
         return key;
     }
     // The rename changes identity, not fingerprints or property mappings. Copy
@@ -29,9 +44,13 @@ export function prepareSessionStorage(storage, vaultIdentity, properties, revisi
     }
     if (!legacy || storage.getItem(legacyKey + ':migrated')) return key;
     const journal = JSON.parse(legacy);
-    if (journal.version !== 1 || !Array.isArray(journal.entries)) throw new Error('Unknown previous Session Marks journal format; existing state retained.');
+    if (journal.version !== 1 || !Array.isArray(journal.entries))
+        throw new Error('Unknown previous Session Marks journal format; existing state retained.');
     if (!legacyNames) {
-        if (journal.entries.length) throw new Error('Previous Session Marks sessions are pending. Set the revision property to updated_count first to recover them before changing names.');
+        if (journal.entries.length)
+            throw new Error(
+                'Previous Session Marks sessions are pending. Set the revision property to updated_count first to recover them before changing names.',
+            );
         return key;
     }
     // Copy, never delete, previous preview state. Only the exact old field mapping

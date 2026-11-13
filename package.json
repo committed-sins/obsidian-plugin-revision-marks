@@ -1,6 +1,6 @@
 {
   "name": "obsidian-plugin-revision-marks",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "type": "module",
   "description": "Content-aware editing sessions, timestamps and revision counts for Obsidian.",
@@ -10,12 +10,19 @@
     "type": "git",
     "url": "https://github.com/committed-sins/obsidian-plugin-revision-marks.git"
   },
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node --test",
-    "check": "npm run build && npm test",
-    "deploy": "npm run check && node scripts/deploy.mjs"
+    "check": "npm run format:check && npm run build && npm test",
+    "deploy": "npm run check && node scripts/deploy.mjs",
+    "format": "prettier --write \"src/**/*.mjs\" \"scripts/**/*.mjs\" \"tests/**/*.mjs\"",
+    "format:check": "prettier --check \"src/**/*.mjs\" \"scripts/**/*.mjs\" \"tests/**/*.mjs\""
   },
-  "devDependencies": { "esbuild": "0.28.2" }
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "prettier": "3.10.1"
+  }
 }
