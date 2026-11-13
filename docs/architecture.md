@@ -49,7 +49,7 @@ Exclusions and all three property names are configurable. Defaults are `created`
 - Runtime and shutdown tests exercise the real adapter and writer with synthetic Obsidian surfaces, including the cleared-view regression and native quit-task ordering.
 - Plugin lifecycle/settings tests load the actual bundle with replacement Obsidian APIs. Only `createRuntime()` is replaced for isolated lifecycle checks; production classes stay top-level.
 - Save-command tests verify callback ownership, native failure handling, original return identity and side-effect-free availability checks.
-- Prettier is pinned as a development dependency. `npm run check` checks formatting, builds the bundle and runs tests. Only the three deployable artifacts enter the vault.
+- dprint and its JavaScript formatter plugin are pinned as development dependencies, with the plugin loaded locally from `node_modules`. `dprint.json` enforces Allman braces for functions, methods and classes while leaving control-flow braces on the same line. `npm run check` checks formatting, builds the bundle and runs tests. Only the three deployable artifacts enter the vault.
 
 Static tests do not establish live desktop/mobile event behavior. No runtime dependency or new save mechanism was introduced by separating these modules.
 

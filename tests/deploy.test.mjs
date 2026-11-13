@@ -5,7 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { deploy } from '../scripts/deploy.mjs';
 
-test('deployment copies only plugin artifacts and preserves settings, activation and notes', async () => {
+test('deployment copies only plugin artifacts and preserves settings, activation and notes', async () =>
+{
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'revision-marks-deploy-'));
     try {
         const vault = path.join(root, 'vault'),

@@ -3,31 +3,39 @@ import test from 'node:test';
 import { startEditSessions } from '../src/obsidian-runtime.mjs';
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const info = (text) => {
+const info = (text) =>
+{
     const match = text.match(/^---\n([\s\S]*?)\n---\n/);
-    return match
-        ? { exists: true, frontmatter: match[1], contentStart: match[0].length }
-        : { exists: false };
+    return match ?
+        { exists: true, frontmatter: match[1], contentStart: match[0].length } :
+        { exists: false };
 };
 const note = (body) =>
-    `---\n${JSON.stringify({ created: '2020-01-01', updated: '2020-01-01', revision: 1 })}\n---\n${body}`;
+    `---\n${
+        JSON.stringify({ created: '2020-01-01', updated: '2020-01-01', revision: 1 })
+    }\n---\n${body}`;
 
 // Matches Obsidian 1.15's quit task collector, including immediate add execution
 // and the snapshot taken by Promise.all in promise().
-class QuitTasks {
+class QuitTasks
+{
     promises = [];
-    add(fn) {
+    add(fn)
+    {
         this.promises.push(fn());
     }
-    addPromise(promise) {
+    addPromise(promise)
+    {
         this.promises.push(promise);
     }
-    promise() {
+    promise()
+    {
         return Promise.all(this.promises);
     }
 }
 
-async function fixture(run) {
+async function fixture(run)
+{
     const originals = new Map(
         ['localStorage', 'window', 'document'].map((key) => [
             key,
@@ -37,31 +45,37 @@ async function fixture(run) {
     const callbacks = new Map(),
         journal = new Map();
     const emitter = (prefix) => ({
-        on(name, fn) {
+        on(name, fn)
+        {
             callbacks.set(prefix + name, fn);
             return prefix + name;
         },
-        offref(key) {
+        offref(key)
+        {
             callbacks.delete(key);
         },
     });
     const surface = (prefix) => ({
-        addEventListener(name, fn) {
+        addEventListener(name, fn)
+        {
             callbacks.set(prefix + name, fn);
         },
-        removeEventListener(name) {
+        removeEventListener(name)
+        {
             callbacks.delete(prefix + name);
         },
     });
     const document = { ...surface('document:'), visibilityState: 'visible' };
-    for (const [key, value] of Object.entries({
-        document,
-        window: surface('window:'),
-        localStorage: {
-            getItem: (key) => journal.get(key),
-            setItem: (key, value) => journal.set(key, value),
-        },
-    }))
+    for (
+        const [key, value] of Object.entries({
+            document,
+            window: surface('window:'),
+            localStorage: {
+                getItem: (key) => journal.get(key),
+                setItem: (key, value) => journal.set(key, value),
+            },
+        })
+    )
         Object.defineProperty(globalThis, key, { configurable: true, value });
     const file = { path: 'notes/synthetic.md', stat: { mtime: 1730000000000 } };
     let disk = note('before'),
@@ -80,7 +94,8 @@ async function fixture(run) {
         editor: { getValue: () => buffer },
         getViewData: () => modeData,
         // Model TextFileView.save: the view mode, not editor.getValue(), supplies the write.
-        async save() {
+        async save()
+        {
             saves++;
             this.dirty = false;
             while (this.savePromise) await this.savePromise;
@@ -99,9 +114,11 @@ async function fixture(run) {
         EditorView: { updateListener: { of: (fn) => fn } },
         editorInfoField: 'info',
         Platform: { isMobile: true },
-        Notice: class {},
+        Notice: class
+        {},
         owner: {
-            registerEditorExtension: (fn) => {
+            registerEditorExtension: (fn) =>
+            {
                 extension = fn;
             },
         },
@@ -110,7 +127,8 @@ async function fixture(run) {
         commands: {
             commands: {
                 'editor:save-file': {
-                    checkCallback(checking) {
+                    checkCallback(checking)
+                    {
                         if (!checking) void view.save();
                         return true;
                     },
@@ -130,16 +148,24 @@ async function fixture(run) {
             read: async () => disk,
         },
         fileManager: {
-            async processFrontMatter(_file, update) {
+            async processFrontMatter(_file, update)
+            {
                 const metadata = info(disk).exists ? JSON.parse(info(disk).frontmatter) : {};
                 update(metadata);
                 writes++;
-                disk = `---\n${JSON.stringify(metadata)}\n---\n${disk.slice(info(disk).contentStart)}`;
-                buffer = modeData = view.data = view.lastSavedData = disk;
+                disk = `---\n${JSON.stringify(metadata)}\n---\n${
+                    disk.slice(info(disk).contentStart)
+                }`;
+                buffer =
+                    modeData =
+                    view.data =
+                    view.lastSavedData =
+                        disk;
             },
         },
     };
-    const edit = () => {
+    const edit = () =>
+    {
         const before = buffer;
         buffer = modeData = note('edited body must survive');
         view.dirty = true;
@@ -153,10 +179,12 @@ async function fixture(run) {
             },
         });
     };
-    const start = () => {
+    const start = () =>
+    {
         runtime = startEditSessions(app, api);
     };
-    const end = async () => {
+    const end = async () =>
+    {
         const previous = runtime;
         runtime = undefined;
         await previous?.stop();
@@ -173,10 +201,17 @@ async function fixture(run) {
             edit,
             start,
             end,
-            setContent: (text) => {
-                disk = buffer = modeData = view.data = view.lastSavedData = text;
+            setContent: (text) =>
+            {
+                disk =
+                    buffer =
+                    modeData =
+                    view.data =
+                    view.lastSavedData =
+                        text;
             },
-            clearMode: () => {
+            clearMode: () =>
+            {
                 modeData = '';
             },
             disk: () => disk,
@@ -194,8 +229,10 @@ async function fixture(run) {
     }
 }
 
-test('quit and unload never save a cleared view mode over a valid saved editor buffer', async () => {
-    await fixture(async (f) => {
+test('quit and unload never save a cleared view mode over a valid saved editor buffer', async () =>
+{
+    await fixture(async (f) =>
+    {
         f.edit();
         await f.view.save();
         const saved = f.disk(),
@@ -210,15 +247,17 @@ test('quit and unload never save a cleared view mode over a valid saved editor b
         assert.equal(f.writes(), 0, 'shutdown performs no frontmatter writes');
         assert.ok(
             [...f.journal.values()].some((raw) =>
-                JSON.parse(raw).entries?.some((entry) => entry.path === 'notes/synthetic.md'),
+                JSON.parse(raw).entries?.some((entry) => entry.path === 'notes/synthetic.md')
             ),
         );
     });
 });
 
-test('timestamp-only mode leaves missing and existing revision values untouched, including strings', async () => {
+test('timestamp-only mode leaves missing and existing revision values untouched, including strings', async () =>
+{
     for (const revision of [undefined, 7, '1.2.3']) {
-        await fixture(async (f) => {
+        await fixture(async (f) =>
+        {
             await f.end();
             f.api.revisionMode = 'off';
             const metadata = { id: 'keep', ...(revision === undefined ? {} : { revision }) };
@@ -253,8 +292,10 @@ test('timestamp-only mode leaves missing and existing revision values untouched,
     }
 });
 
-test('timestamp-only recovery recognizes an interrupted commit that inserted created', async () => {
-    await fixture(async (f) => {
+test('timestamp-only recovery recognizes an interrupted commit that inserted created', async () =>
+{
+    await fixture(async (f) =>
+    {
         await f.end();
         f.api.revisionMode = 'off';
         f.setContent('before');
@@ -265,13 +306,15 @@ test('timestamp-only recovery recognizes an interrupted commit that inserted cre
         await f.callbacks.get('vault:modify')(f.view.file);
         const process = f.app.fileManager.processFrontMatter,
             log = console.error;
-        f.app.fileManager.processFrontMatter = async (...args) => {
+        f.app.fileManager.processFrontMatter = async (...args) =>
+        {
             await process(...args);
             void f.end(); // Teardown prevents the same flush from immediately retrying.
             throw new Error('synthetic interruption after write');
         };
         try {
-            console.error = () => {};
+            console.error = () =>
+            {};
             await f.complete();
         } finally {
             console.error = log;
@@ -279,7 +322,7 @@ test('timestamp-only recovery recognizes an interrupted commit that inserted cre
         assert.equal(f.writes(), 1);
         assert.ok(
             [...f.journal.values()].some((raw) =>
-                JSON.parse(raw).entries?.some((entry) => entry.path === f.view.file.path),
+                JSON.parse(raw).entries?.some((entry) => entry.path === f.view.file.path)
             ),
         );
         await f.end();
@@ -292,8 +335,10 @@ test('timestamp-only recovery recognizes an interrupted commit that inserted cre
     });
 });
 
-test('timestamp-only editor completion updates the timestamp without incrementing the existing revision', async () => {
-    await fixture(async (f) => {
+test('timestamp-only editor completion updates the timestamp without incrementing the existing revision', async () =>
+{
+    await fixture(async (f) =>
+    {
         await f.end();
         f.api.revisionMode = 'off';
         f.start();
@@ -309,8 +354,10 @@ test('timestamp-only editor completion updates the timestamp without incrementin
     });
 });
 
-test('timestamp-only unchanged content and complete property undo produce no write', async () => {
-    await fixture(async (f) => {
+test('timestamp-only unchanged content and complete property undo produce no write', async () =>
+{
+    await fixture(async (f) =>
+    {
         await f.end();
         f.api.revisionMode = 'off';
         f.start();
@@ -330,8 +377,10 @@ test('timestamp-only unchanged content and complete property undo produce no wri
     });
 });
 
-test('unsaved completion is deferred; native save then completes exactly once', async () => {
-    await fixture(async (f) => {
+test('unsaved completion is deferred; native save then completes exactly once', async () =>
+{
+    await fixture(async (f) =>
+    {
         f.edit();
         const saved = f.disk();
         await f.complete();
@@ -348,8 +397,10 @@ test('unsaved completion is deferred; native save then completes exactly once', 
     });
 });
 
-test('queued completion is cancelled by quit; journal recovery completes once on restart', async () => {
-    await fixture(async (f) => {
+test('queued completion is cancelled by quit; journal recovery completes once on restart', async () =>
+{
+    await fixture(async (f) =>
+    {
         f.edit();
         await f.view.save();
         const completion = f.complete();
@@ -369,8 +420,10 @@ test('queued completion is cancelled by quit; journal recovery completes once on
     });
 });
 
-test('mobile background checkpoints only; returning completes a saved session', async () => {
-    await fixture(async (f) => {
+test('mobile background checkpoints only; returning completes a saved session', async () =>
+{
+    await fixture(async (f) =>
+    {
         f.edit();
         await f.view.save();
         const saved = f.disk();
@@ -390,8 +443,10 @@ test('mobile background checkpoints only; returning completes a saved session', 
     });
 });
 
-test('plugin unload without quit preserves saved content even after the mode clears', async () => {
-    await fixture(async (f) => {
+test('plugin unload without quit preserves saved content even after the mode clears', async () =>
+{
+    await fixture(async (f) =>
+    {
         f.edit();
         await f.view.save();
         const saved = f.disk();
@@ -403,8 +458,10 @@ test('plugin unload without quit preserves saved content even after the mode cle
     });
 });
 
-test('cleared or detached views defer completion even outside shutdown', async () => {
-    await fixture(async (f) => {
+test('cleared or detached views defer completion even outside shutdown', async () =>
+{
+    await fixture(async (f) =>
+    {
         f.edit();
         await f.view.save();
         const saved = f.disk();
@@ -417,15 +474,20 @@ test('cleared or detached views defer completion even outside shutdown', async (
     });
 });
 
-test('boolean native Save command waits for its existing savePromise without a second save', async () => {
-    await fixture(async (f) => {
+test('boolean native Save command waits for its existing savePromise without a second save', async () =>
+{
+    await fixture(async (f) =>
+    {
         let release;
-        const gate = new Promise((resolve) => {
+        const gate = new Promise((resolve) =>
+        {
             release = resolve;
         });
         const nativeSave = f.view.save.bind(f.view);
-        f.view.save = () => {
-            f.view.savePromise = gate.then(() => {
+        f.view.save = () =>
+        {
+            f.view.savePromise = gate.then(() =>
+            {
                 f.view.savePromise = null;
                 return nativeSave();
             });
@@ -443,12 +505,15 @@ test('boolean native Save command waits for its existing savePromise without a s
     });
 });
 
-test('quit cancels a completion already waiting for native save', async () => {
-    await fixture(async (f) => {
+test('quit cancels a completion already waiting for native save', async () =>
+{
+    await fixture(async (f) =>
+    {
         f.edit();
         await f.view.save();
         let release;
-        f.view.savePromise = new Promise((resolve) => {
+        f.view.savePromise = new Promise((resolve) =>
+        {
             release = resolve;
         });
         const completion = f.complete();
@@ -465,20 +530,25 @@ test('quit cancels a completion already waiting for native save', async () => {
     });
 });
 
-test('quit between processFrontMatter scheduling and callback prevents metadata mutation', async () => {
-    await fixture(async (f) => {
+test('quit between processFrontMatter scheduling and callback prevents metadata mutation', async () =>
+{
+    await fixture(async (f) =>
+    {
         f.edit();
         await f.view.save();
         const saved = f.disk();
         const process = f.app.fileManager.processFrontMatter;
         let entered, release;
-        const scheduled = new Promise((resolve) => {
+        const scheduled = new Promise((resolve) =>
+        {
             entered = resolve;
         });
-        const gate = new Promise((resolve) => {
+        const gate = new Promise((resolve) =>
+        {
             release = resolve;
         });
-        f.app.fileManager.processFrontMatter = async (...args) => {
+        f.app.fileManager.processFrontMatter = async (...args) =>
+        {
             entered();
             await gate;
             return process(...args);
@@ -495,22 +565,28 @@ test('quit between processFrontMatter scheduling and callback prevents metadata 
     });
 });
 
-test('desktop quit waits for native tasks and metadata persistence before allowing exit, without saving twice', async () => {
-    await fixture(async (f) => {
+test('desktop quit waits for native tasks and metadata persistence before allowing exit, without saving twice', async () =>
+{
+    await fixture(async (f) =>
+    {
         f.api.Platform.isMobile = false;
         f.edit();
         let releaseNative, releaseMetadata, metadataEntered;
-        const nativeGate = new Promise((resolve) => {
+        const nativeGate = new Promise((resolve) =>
+        {
             releaseNative = resolve;
         });
-        const metadataGate = new Promise((resolve) => {
+        const metadataGate = new Promise((resolve) =>
+        {
             releaseMetadata = resolve;
         });
-        const entered = new Promise((resolve) => {
+        const entered = new Promise((resolve) =>
+        {
             metadataEntered = resolve;
         });
         const process = f.app.fileManager.processFrontMatter;
-        f.app.fileManager.processFrontMatter = async (...args) => {
+        f.app.fileManager.processFrontMatter = async (...args) =>
+        {
             metadataEntered();
             await metadataGate;
             return process(...args);
@@ -519,7 +595,8 @@ test('desktop quit waits for native tasks and metadata persistence before allowi
         tasks.addPromise(nativeGate.then(() => f.view.save())); // Core handler precedes plugin handler.
         f.callbacks.get('workspace:quit')(tasks);
         let exited = false;
-        const exit = tasks.promise().then(() => {
+        const exit = tasks.promise().then(() =>
+        {
             exited = true;
         });
         await wait(20);
@@ -545,8 +622,10 @@ test('desktop quit waits for native tasks and metadata persistence before allowi
     });
 });
 
-test('desktop quit skips cleared views, retains recovery and never calls view.save', async () => {
-    await fixture(async (f) => {
+test('desktop quit skips cleared views, retains recovery and never calls view.save', async () =>
+{
+    await fixture(async (f) =>
+    {
         f.api.Platform.isMobile = false;
         f.edit();
         await f.view.save();
@@ -562,15 +641,18 @@ test('desktop quit skips cleared views, retains recovery and never calls view.sa
     });
 });
 
-test('a rejected native quit save leaves metadata pending and does not hang the plugin task', async () => {
-    await fixture(async (f) => {
+test('a rejected native quit save leaves metadata pending and does not hang the plugin task', async () =>
+{
+    await fixture(async (f) =>
+    {
         f.api.Platform.isMobile = false;
         f.edit();
         const saved = f.disk(),
             tasks = new QuitTasks();
         const originalError = console.error;
         try {
-            console.error = () => {};
+            console.error = () =>
+            {};
             tasks.addPromise(Promise.reject(new Error('synthetic native write failure')));
             f.callbacks.get('workspace:quit')(tasks);
             await assert.rejects(tasks.promise(), /synthetic native write failure/);
@@ -584,8 +666,10 @@ test('a rejected native quit save leaves metadata pending and does not hang the 
     });
 });
 
-test('plugin unload while desktop quit waits cancels metadata completion', async () => {
-    await fixture(async (f) => {
+test('plugin unload while desktop quit waits cancels metadata completion', async () =>
+{
+    await fixture(async (f) =>
+    {
         f.api.Platform.isMobile = false;
         f.edit();
         await f.view.save();
@@ -593,7 +677,8 @@ test('plugin unload while desktop quit waits cancels metadata completion', async
         let release;
         const tasks = new QuitTasks();
         tasks.addPromise(
-            new Promise((resolve) => {
+            new Promise((resolve) =>
+            {
                 release = resolve;
             }),
         );
@@ -606,8 +691,10 @@ test('plugin unload while desktop quit waits cancels metadata completion', async
     });
 });
 
-test('duplicate desktop quit events join the same completion task without incrementing twice', async () => {
-    await fixture(async (f) => {
+test('duplicate desktop quit events join the same completion task without incrementing twice', async () =>
+{
+    await fixture(async (f) =>
+    {
         f.api.Platform.isMobile = false;
         f.edit();
         await f.view.save();
@@ -620,8 +707,10 @@ test('duplicate desktop quit events join the same completion task without increm
     });
 });
 
-test('desktop quit completes multiple native-saved notes, including Properties changes', async () => {
-    await fixture(async (f) => {
+test('desktop quit completes multiple native-saved notes, including Properties changes', async () =>
+{
+    await fixture(async (f) =>
+    {
         f.api.Platform.isMobile = false;
         const otherFile = { path: 'notes/other.md', stat: { mtime: 1730000000000 } };
         let otherDisk = note('other body'),
@@ -636,26 +725,32 @@ test('desktop quit completes multiple native-saved notes, including Properties c
         const lookup = f.app.vault.getAbstractFileByPath,
             read = f.app.vault.read;
         const process = f.app.fileManager.processFrontMatter;
-        f.app.workspace.iterateAllLeaves = (fn) => {
+        f.app.workspace.iterateAllLeaves = (fn) =>
+        {
             fn({ view: f.view });
             fn({ view: otherView });
         };
         f.app.vault.getAbstractFileByPath = (path) =>
             path === otherFile.path ? otherFile : lookup(path);
         f.app.vault.read = (file) => (file === otherFile ? Promise.resolve(otherDisk) : read(file));
-        f.app.fileManager.processFrontMatter = async (file, update) => {
+        f.app.fileManager.processFrontMatter = async (file, update) =>
+        {
             if (file !== otherFile) return process(file, update);
             const metadata = JSON.parse(info(otherDisk).frontmatter);
             update(metadata);
             otherWrites++;
             otherDisk =
-                otherBuffer = `---\n${JSON.stringify(metadata)}\n---\n${otherDisk.slice(info(otherDisk).contentStart)}`;
+                otherBuffer =
+                    `---\n${JSON.stringify(metadata)}\n---\n${
+                        otherDisk.slice(info(otherDisk).contentStart)
+                    }`;
         };
         await f.callbacks.get('vault:modify')(otherFile); // Establish a known baseline.
         f.edit();
         const tasks = new QuitTasks();
         tasks.addPromise(
-            Promise.resolve().then(async () => {
+            Promise.resolve().then(async () =>
+            {
                 await f.view.save();
                 otherDisk = otherBuffer = otherDisk.replace(
                     '"revision":1',

@@ -4,13 +4,15 @@ import { registerSaveCommand } from '../src/save-command.mjs';
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
-test('save-command adapter preserves binding, arguments and return identity without completing availability checks', async () => {
+test('save-command adapter preserves binding, arguments and return identity without completing availability checks', async () =>
+{
     const returned = {},
         argumentsSeen = [],
         completed = [],
         errors = [];
     const command = {
-        checkCallback(...args) {
+        checkCallback(...args)
+        {
             assert.equal(this, command);
             argumentsSeen.push(args);
             return returned;
@@ -43,7 +45,8 @@ test('save-command adapter preserves binding, arguments and return identity with
     assert.equal(command.checkCallback, original);
 });
 
-test('save-command adapter reports native promise failures and never restores over a later callback owner', async () => {
+test('save-command adapter reports native promise failures and never restores over a later callback owner', async () =>
+{
     const failure = new Error('native save failed'),
         completed = [],
         errors = [];
@@ -69,11 +72,13 @@ test('save-command adapter reports native promise failures and never restores ov
     assert.equal(command.callback, replacement);
 });
 
-test('missing native save command produces a notice path and a safe cleanup function', () => {
+test('missing native save command produces a notice path and a safe cleanup function', () =>
+{
     const errors = [];
     const restore = registerSaveCommand({
         app: {},
-        complete() {},
+        complete()
+        {},
         isStopped: () => false,
         report: (error) => errors.push(error),
     });

@@ -16,7 +16,8 @@ import { prepareSessionStorage } from './storage.mjs';
 /** Connect the session tracker to Obsidian. Never force-save editor views.
  * @returns {TrackingRuntime}
  */
-export function startEditSessions(app, api) {
+export function startEditSessions(app, api)
+{
     const owner = api.owner;
     if (!owner?.registerEditorExtension)
         throw new Error('Revision Marks requires its plugin lifecycle owner');
@@ -39,7 +40,8 @@ export function startEditSessions(app, api) {
     const completionRequests = new Set();
     const deferred = (message) =>
         Object.assign(new Error(message), { code: 'SESSION_MARKS_DEFERRED' });
-    const assertRunning = (shutdown = false) => {
+    const assertRunning = (shutdown = false) =>
+    {
         if (stopped || ((closing || suspended) && !(shutdown && shutdownCompletion))) {
             throw deferred('Session completion deferred until the app is active');
         }
@@ -48,7 +50,8 @@ export function startEditSessions(app, api) {
     let flushQueue = Promise.resolve();
     const refs = [];
     const reported = new Set();
-    const report = (error) => {
+    const report = (error) =>
+    {
         if (error?.code === 'SESSION_MARKS_DEFERRED') return;
         console.error('Revision Marks', error);
         const message = `Edit sessions: ${error.message ?? error}`;
@@ -62,9 +65,11 @@ export function startEditSessions(app, api) {
     const isActive = (path) => app.workspace.getActiveFile()?.path === path;
     const recoveringPaths = new Set();
     const isSessionActive = (path) => isActive(path) && !recoveringPaths.has(path);
-    const viewsFor = (path) => {
+    const viewsFor = (path) =>
+    {
         const views = [];
-        app.workspace.iterateAllLeaves((leaf) => {
+        app.workspace.iterateAllLeaves((leaf) =>
+        {
             if (leaf.view.file?.path === path && leaf.view.editor) views.push(leaf.view);
         });
         return views;
@@ -97,18 +102,21 @@ export function startEditSessions(app, api) {
         read: noteAccess.read,
         write: noteAccess.write,
     });
-    const scheduleCheckpoint = () => {
+    const scheduleCheckpoint = () =>
+    {
         clearTimeout(checkpointTimer);
-        checkpointTimer = setTimeout(() => {
+        checkpointTimer = setTimeout(() =>
+        {
             void tracker.checkpoint();
         }, 300);
     };
-    slot.listener = (update) => {
+    slot.listener = (update) =>
+    {
         if (
             stopped ||
             !update.docChanged ||
             !update.transactions.some((tr) =>
-                ['input', 'delete', 'move', 'undo', 'redo'].some((event) => tr.isUserEvent(event)),
+                ['input', 'delete', 'move', 'undo', 'redo'].some((event) => tr.isUserEvent(event))
             )
         )
             return;
@@ -127,18 +135,22 @@ export function startEditSessions(app, api) {
         tracker.change(file.path, update.startState.doc.toString(), update.state.doc.toString());
         scheduleCheckpoint();
     };
-    const scheduleInactiveCompletion = () => {
+    const scheduleInactiveCompletion = () =>
+    {
         clearTimeout(leavingTimer);
-        leavingTimer = setTimeout(() => {
+        leavingTimer = setTimeout(() =>
+        {
             if (stopped || closing || suspended) return;
             for (const path of tracker.paths()) if (!isActive(path)) void tracker.finish(path);
         }, 150);
     };
-    const observeFile = (file) => {
+    const observeFile = (file) =>
+    {
         if (stopped || !file || !eligible(file.path) || writing.has(file.path)) return diskQueue;
         const path = file.path;
         diskQueue = diskQueue
-            .then(async () => {
+            .then(async () =>
+            {
                 if (stopped || !fileAt(path)) return;
                 const text = await app.vault.read(fileAt(path));
                 if (!fileAt(path)) return;
@@ -153,7 +165,8 @@ export function startEditSessions(app, api) {
             .catch(report);
         return diskQueue;
     };
-    async function completeSavedSessions(onlyPath) {
+    async function completeSavedSessions(onlyPath)
+    {
         if (stopped || closing || suspended) {
             await tracker.checkpoint();
             return;
@@ -161,7 +174,8 @@ export function startEditSessions(app, api) {
         // Native Obsidian owns body persistence. Await an existing save only;
         // unsaved sessions stay journaled and retry on a later native modify event.
         const paths = new Set();
-        app.workspace.iterateAllLeaves(({ view }) => {
+        app.workspace.iterateAllLeaves(({ view }) =>
+        {
             const eligibleView = view.editor && eligible(view.file?.path ?? '');
             const requestedPath = !onlyPath || view.file?.path === onlyPath;
             if (eligibleView && requestedPath) paths.add(view.file.path);
@@ -187,7 +201,8 @@ export function startEditSessions(app, api) {
         await tracker.checkpoint();
     }
 
-    function complete(onlyPath) {
+    function complete(onlyPath)
+    {
         flushQueue = flushQueue.then(() => completeSavedSessions(onlyPath)).catch(report);
         return flushQueue;
     }
@@ -198,17 +213,20 @@ export function startEditSessions(app, api) {
     refs.push([app.workspace, app.workspace.on('layout-change', scheduleInactiveCompletion)]);
     refs.push([
         app.vault,
-        app.vault.on('rename', (file, oldPath) => {
+        app.vault.on('rename', (file, oldPath) =>
+        {
             void tracker.rename(oldPath, file.path);
         }),
     ]);
     refs.push([
         app.vault,
-        app.vault.on('delete', (file) => {
+        app.vault.on('delete', (file) =>
+        {
             void tracker.remove(file.path);
         }),
     ]);
-    async function completeOnDesktopQuit(nativeWork) {
+    async function completeOnDesktopQuit(nativeWork)
+    {
         // Attach the rejection handler immediately, even while journaling.
         const settledNativeWork = Promise.resolve(nativeWork).then(
             () => null,
@@ -224,7 +242,8 @@ export function startEditSessions(app, api) {
             if (stopped) return;
             shutdownCompletion = true;
             const paths = new Set(tracker.paths());
-            app.workspace.iterateAllLeaves(({ view }) => {
+            app.workspace.iterateAllLeaves(({ view }) =>
+            {
                 if (view.editor && eligible(view.file?.path ?? '')) paths.add(view.file.path);
             });
             for (const path of paths) {
@@ -249,7 +268,8 @@ export function startEditSessions(app, api) {
         }
     }
 
-    function onQuit(tasks) {
+    function onQuit(tasks)
+    {
         closing = true; // Synchronous: invalidate already queued completions too.
         // Obsidian 1.15 registers native saves before plugin quit listeners.
         // Tasks.promise() snapshots currently registered tasks. Capture it BEFORE
@@ -270,16 +290,19 @@ export function startEditSessions(app, api) {
         else return quitPromise;
     }
     refs.push([app.workspace, app.workspace.on('quit', onQuit)]);
-    const onMobileBlur = () => {
+    const onMobileBlur = () =>
+    {
         suspended = true;
         void tracker.checkpoint();
     };
-    const onResume = () => {
+    const onResume = () =>
+    {
         if (stopped || closing || globalThis.document?.visibilityState === 'hidden') return;
         suspended = false;
         void complete();
     };
-    const onHide = () => {
+    const onHide = () =>
+    {
         if (globalThis.document?.visibilityState === 'hidden') onMobileBlur();
         else onResume();
     };
@@ -294,7 +317,8 @@ export function startEditSessions(app, api) {
         isStopped: () => stopped,
         report,
     });
-    const interval = setInterval(() => {
+    const interval = setInterval(() =>
+    {
         void tracker.checkpoint();
     }, 5000);
     // Recover the previous app run before treating new input as a new session.
@@ -305,7 +329,8 @@ export function startEditSessions(app, api) {
     }
     // First run establishes fingerprints without backdating the vault. Later starts
     // read only changed file stats. Work is paced so mobile startup remains usable.
-    const initialize = async () => {
+    const initialize = async () =>
+    {
         let batch = 0;
         const files = app.vault.getMarkdownFiles?.() ?? [];
         const paths = new Set(files.map((file) => file.path));
@@ -321,11 +346,13 @@ export function startEditSessions(app, api) {
         }
         await tracker.checkpoint();
     };
-    initializationTimer = setTimeout(() => {
+    initializationTimer = setTimeout(() =>
+    {
         void initialize().catch(report);
     }, 1000);
     scheduleInactiveCompletion();
-    const stop = () => {
+    const stop = () =>
+    {
         stopped = true;
         slot.listener = null;
         clearTimeout(checkpointTimer);

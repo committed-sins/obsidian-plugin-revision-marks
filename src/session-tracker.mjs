@@ -16,17 +16,20 @@ export function createSessionTracker({
     hash = sha256,
     report = console.error,
     isEligible = eligibleNote,
-}) {
+})
+{
     const sessions = new Map();
     const baselines = new Map();
     let queue = Promise.resolve();
     let available = true;
-    const save = () => {
+    const save = () =>
+    {
         const entries = [...sessions.values()].map((session) => session.record).filter(Boolean);
         storage.setItem(storageKey, JSON.stringify({ version: 1, entries }));
     };
     let baselineDirty = false;
-    const saveBaselines = () => {
+    const saveBaselines = () =>
+    {
         if (!baselineDirty) return;
         storage.setItem(
             storageKey + ':baselines',
@@ -34,7 +37,8 @@ export function createSessionTracker({
         );
         baselineDirty = false;
     };
-    const remember = (path, contentHash, metadata, mtime) => {
+    const remember = (path, contentHash, metadata, mtime) =>
+    {
         baselines.set(path, {
             hash: contentHash,
             count: metadata.count,
@@ -87,20 +91,22 @@ export function createSessionTracker({
         report(error);
     }
     const eligible = isEligible;
-    const enqueue = (operation) => {
+    const enqueue = (operation) =>
+    {
         const result = queue.then(operation);
         queue = result.catch(report);
         return queue;
     };
-    const snapshot = async (session, path) => {
+    const snapshot = async (session, path) =>
+    {
         if (session.before === undefined || session.savedRevision === session.revision) return;
         const revision = session.revision;
         const editedAt = session.editedAt;
         const comparisonVersion = session.record?.comparisonVersion ?? 2;
         const [baselineHash, latestHash] = await Promise.all([
-            session.record
-                ? session.record.baselineHash
-                : hash(comparableContent(session.before, api, comparisonVersion)),
+            session.record ?
+                session.record.baselineHash :
+                hash(comparableContent(session.before, api, comparisonVersion)),
             hash(comparableContent(session.after, api, comparisonVersion)),
         ]);
         const initial = session.record?.initial ?? metadataOf(session.before, api);
@@ -115,7 +121,8 @@ export function createSessionTracker({
         };
         session.savedRevision = revision;
     };
-    const change = (path, before, after) => {
+    const change = (path, before, after) =>
+    {
         if (!available || !eligible(path)) return;
         const session = sessions.get(path) ?? {};
         session.before ??= before;
@@ -125,14 +132,16 @@ export function createSessionTracker({
         sessions.set(path, session);
     };
     const checkpoint = () =>
-        enqueue(async () => {
+        enqueue(async () =>
+        {
             if (!available) return;
             for (const [path, session] of sessions) await snapshot(session, path);
             save();
             saveBaselines();
         });
     const observe = (path, text, mtime) =>
-        enqueue(async () => {
+        enqueue(async () =>
+        {
             if (!available || !eligible(path)) return;
             const contentHash = await hash(comparableContent(text, api));
             const metadata = metadataOf(text, api);
@@ -172,7 +181,8 @@ export function createSessionTracker({
             save();
         });
     const finish = (path, { force = false, shutdown = false } = {}) =>
-        enqueue(async () => {
+        enqueue(async () =>
+        {
             if (!available || (!force && isActive(path))) return;
             const session = sessions.get(path);
             if (!session) return;
@@ -196,10 +206,9 @@ export function createSessionTracker({
                 return;
             }
             const contentHash = await hash(comparableContent(text, api, record.comparisonVersion));
-            const canonicalHash =
-                record.comparisonVersion === 2
-                    ? contentHash
-                    : await hash(comparableContent(text, api));
+            const canonicalHash = record.comparisonVersion === 2 ?
+                contentHash :
+                await hash(comparableContent(text, api));
             const metadata = metadataOf(text, api);
             if (
                 record.intent &&
@@ -247,13 +256,13 @@ export function createSessionTracker({
                 );
             }
             record.latestHash = contentHash;
-            const editedAt =
-                Number.isFinite(mtime) && mtime > 0
-                    ? new Date(mtime).toISOString()
-                    : record.editedAt;
+            const editedAt = Number.isFinite(mtime) && mtime > 0 ?
+                new Date(mtime).toISOString() :
+                record.editedAt;
             const proposed = record.intent?.updated ?? api.formatDate(editedAt);
-            const existingTime =
-                typeof metadata.updated === 'string' ? Date.parse(metadata.updated) : NaN;
+            const existingTime = typeof metadata.updated === 'string' ?
+                Date.parse(metadata.updated) :
+                NaN;
             const proposedTime = Date.parse(proposed);
             const updateTimestamp = !Number.isFinite(existingTime) || existingTime < proposedTime;
             // Compare instants, not timezone spellings; never move a valid stamp backwards.
@@ -265,13 +274,13 @@ export function createSessionTracker({
             };
             record.intent.addCreated = !metadata.hasCreated;
             record.intent.created = metadata.hasCreated ? metadata.created : record.intent.updated;
-            record.intent.postCommitHash = record.intent.addCreated
-                ? await hash(
-                      comparableContent(text, api, 2, {
-                          [propertyNames(api).created]: record.intent.created,
-                      }),
-                  )
-                : canonicalHash;
+            record.intent.postCommitHash = record.intent.addCreated ?
+                await hash(
+                    comparableContent(text, api, 2, {
+                        [propertyNames(api).created]: record.intent.created,
+                    }),
+                ) :
+                canonicalHash;
             if (!Number.isSafeInteger(record.intent.count))
                 throw new Error('updated_count overflow');
             save(); // Write-ahead record: retry must never increment twice.
@@ -299,7 +308,8 @@ export function createSessionTracker({
             save();
             saveBaselines();
         });
-    const rename = (oldPath, newPath) => {
+    const rename = (oldPath, newPath) =>
+    {
         if (oldPath === newPath) return queue;
         for (const path of new Set([...baselines.keys(), ...sessions.keys()])) {
             if (path !== oldPath && !path.startsWith(oldPath + '/')) continue;
@@ -316,14 +326,16 @@ export function createSessionTracker({
             sessions.delete(path);
             baselineDirty = true;
         }
-        return enqueue(async () => {
+        return enqueue(async () =>
+        {
             if (available) {
                 save();
                 saveBaselines();
             }
         });
     };
-    const remove = (path) => {
+    const remove = (path) =>
+    {
         for (const candidate of new Set([...baselines.keys(), ...sessions.keys()])) {
             if (candidate === path || candidate.startsWith(path + '/')) {
                 baselines.delete(candidate);
@@ -331,7 +343,8 @@ export function createSessionTracker({
                 baselineDirty = true;
             }
         }
-        return enqueue(async () => {
+        return enqueue(async () =>
+        {
             if (available) {
                 save();
                 saveBaselines();

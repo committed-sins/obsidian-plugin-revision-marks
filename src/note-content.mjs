@@ -1,12 +1,14 @@
 import { propertyNames, revisionEnabled } from './properties.mjs';
 
-export function comparableContent(text, api, comparisonVersion = 2, overrides = {}) {
+export function comparableContent(text, api, comparisonVersion = 2, overrides = {})
+{
     text = text.replace(/\r\n?/g, '\n');
     const info = api.getFrontMatterInfo(text);
     const properties = info.exists ? (api.parseYaml(info.frontmatter) ?? {}) : {};
     if (typeof properties !== 'object' || Array.isArray(properties))
         throw new Error('Frontmatter must be a mapping');
-    const stable = (value) => {
+    const stable = (value) =>
+    {
         if (value instanceof Date) return value.toISOString();
         if (Array.isArray(value)) return value.map(stable);
         if (value && typeof value === 'object')
@@ -33,7 +35,8 @@ export function comparableContent(text, api, comparisonVersion = 2, overrides = 
     );
 }
 
-export function metadataOf(text, api) {
+export function metadataOf(text, api)
+{
     const info = api.getFrontMatterInfo(text);
     const fm = info.exists ? (api.parseYaml(info.frontmatter) ?? {}) : {};
     const names = propertyNames(api);
@@ -42,19 +45,18 @@ export function metadataOf(text, api) {
         throw new Error(`${names.revision} must be a non-negative integer`);
     return {
         count,
-        updated:
-            fm[names.updated] instanceof Date
-                ? fm[names.updated].toISOString()
-                : (fm[names.updated] ?? null),
+        updated: fm[names.updated] instanceof Date ?
+            fm[names.updated].toISOString() :
+            (fm[names.updated] ?? null),
         hasCreated: Object.hasOwn(fm, names.created),
-        created:
-            fm[names.created] instanceof Date
-                ? fm[names.created].toISOString()
-                : (fm[names.created] ?? null),
+        created: fm[names.created] instanceof Date ?
+            fm[names.created].toISOString() :
+            (fm[names.created] ?? null),
     };
 }
 
-export async function sha256(text) {
+export async function sha256(text)
+{
     const bytes = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
     return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }

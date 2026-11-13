@@ -2,6 +2,8 @@
 
 - Sign every Git commit with the configured backend/key and verify its signature. Never bypass signing. If signing fails, preserve files uncommitted. Do not rewrite signed commits because verifier/trust configuration is missing.
 - Use English commit messages.
+- Use Allman opening braces for functions, block-bodied arrow functions, methods/constructors/accessors and classes: place `{` on the following line. Keep control-flow blocks (`if`, loops, `try/catch`, etc.) in their existing style. Preserve JavaScript syntax and automatic-semicolon-insertion behavior; never put a return value on a new line immediately after `return`, or split arrow parameters from `=>`.
+- Run `npm run format` and `npm run format:check` for the pinned dprint rules in `dprint.json`. Do not reintroduce a formatter that overrides the Allman convention.
 - Preserve note bodies, IDs, links and unrelated frontmatter. Unchanged semantic content must not update either managed field.
 - Treat autosave, explicit save and session completion as distinct events. Preserve idempotent recovery and safeguards against duplicate sync increments.
 - Keep device-local recovery data separate from synced settings. Never store full note text in diagnostics or recovery records.

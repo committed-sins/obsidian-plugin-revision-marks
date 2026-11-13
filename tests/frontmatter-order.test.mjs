@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { addSessionProperties } from '../src/frontmatter-order.mjs';
 
-test('completing a partial block preserves unrelated values and unusual own property names safely', () => {
+test('completing a partial block preserves unrelated values and unusual own property names safely', () =>
+{
     const fm = JSON.parse('{"custom":{"nested":true},"__proto__":"keep","revision":2,"id":"same"}');
     addSessionProperties(fm, { created: 'now', updated: 'now', revision: 3 });
     assert.deepEqual(Object.keys(fm), [
@@ -18,7 +19,8 @@ test('completing a partial block preserves unrelated values and unusual own prop
     assert.deepEqual(fm.custom, { nested: true });
 });
 
-test('all missing-field combinations form a single created/updated/revision block at the first existing field or bottom', () => {
+test('all missing-field combinations form a single created/updated/revision block at the first existing field or bottom', () =>
+{
     const keys = ['created', 'updated', 'revision'];
     const values = { created: 'creation', updated: 'update', revision: 5 };
     for (let mask = 0; mask < 7; mask++) {
@@ -51,7 +53,8 @@ test('all missing-field combinations form a single created/updated/revision bloc
     }
 });
 
-test('a complete manually reordered or separated block retains its exact key positions', () => {
+test('a complete manually reordered or separated block retains its exact key positions', () =>
+{
     const fm = {
         revision: 2,
         title: 'keep',

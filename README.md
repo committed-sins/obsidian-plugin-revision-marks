@@ -40,7 +40,7 @@ npm run check
 
 The check validates formatting, builds the browser-compatible CommonJS entry and runs session/recovery/runtime tests plus plugin lifecycle, ordering and deployment checks. Test fixtures contain synthetic note content only. Build artifacts are `dist/main.js`, `dist/manifest.json`, and `dist/styles.css`.
 
-Use `npm run format` to apply the pinned Prettier rules or `npm run format:check` to check them without editing. JavaScript uses four spaces, single quotes and CRLF; Markdown keeps LF. The formatter is a development dependency and is not included in the plugin.
+Use `npm run format` to apply the pinned dprint rules in `dprint.json` or `npm run format:check` to check them without editing. Functions, methods and classes use Allman braces (opening brace on the next line); control-flow blocks keep same-line braces. JavaScript uses four spaces, single quotes and CRLF; Markdown keeps LF. The formatter and its JavaScript plugin are pinned development dependencies and are not included in the Obsidian plugin. These conventions are also recorded in `AGENTS.md`.
 
 ## Reading the source
 

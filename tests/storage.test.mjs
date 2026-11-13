@@ -4,7 +4,8 @@ import { prepareSessionStorage, sessionStorageKey } from '../src/storage.mjs';
 
 const defaults = { created: 'created', updated: 'updated', revision: 'revision' };
 const legacy = { ...defaults, revision: 'updated_count' };
-const fixture = () => {
+const fixture = () =>
+{
     const values = new Map();
     return {
         values,
@@ -15,7 +16,8 @@ const fixture = () => {
     };
 };
 
-test('property-name mappings have separate recovery namespaces', () => {
+test('property-name mappings have separate recovery namespaces', () =>
+{
     assert.ok(sessionStorageKey('vault', defaults).startsWith('revision-marks.v2:'));
     assert.notEqual(sessionStorageKey('vault', defaults), sessionStorageKey('vault', legacy));
     assert.notEqual(
@@ -24,7 +26,8 @@ test('property-name mappings have separate recovery namespaces', () => {
     );
 });
 
-test('timestamp-only state is separate and cannot import pending counter intentions', () => {
+test('timestamp-only state is separate and cannot import pending counter intentions', () =>
+{
     const f = fixture();
     const counter = sessionStorageKey('vault', defaults),
         off = sessionStorageKey('vault', defaults, 'off');
@@ -36,7 +39,8 @@ test('timestamp-only state is separate and cannot import pending counter intenti
     assert.equal(f.values.get(counter), 'pending counter journal');
 });
 
-test('renaming copies the exact property-mapped Session Marks journal and baselines, retaining originals', () => {
+test('renaming copies the exact property-mapped Session Marks journal and baselines, retaining originals', () =>
+{
     const f = fixture();
     const names = { created: 'born', updated: 'touched', revision: 'updated_revision' };
     const key = sessionStorageKey('vault', names),
@@ -61,14 +65,16 @@ test('renaming copies the exact property-mapped Session Marks journal and baseli
     assert.equal(f.values.has(sessionStorageKey('other-vault', names)), false);
 });
 
-test('an interrupted rename copy retries without losing the source journal', () => {
+test('an interrupted rename copy retries without losing the source journal', () =>
+{
     const f = fixture(),
         key = sessionStorageKey('vault', defaults);
     const old = key.replace('revision-marks.v2:', 'session-marks.v2:');
     f.values.set(old, 'retained journal');
     f.values.set(old + ':baselines', 'retained baselines');
     const setItem = f.storage.setItem;
-    f.storage.setItem = (name, value) => {
+    f.storage.setItem = (name, value) =>
+    {
         if (name === key) throw new Error('synthetic full storage');
         setItem(name, value);
     };
@@ -81,7 +87,8 @@ test('an interrupted rename copy retries without losing the source journal', () 
     assert.equal(f.values.get(key + ':baselines'), 'retained baselines');
 });
 
-test('unfinished previous-preview sessions cannot be interpreted as revision counts', () => {
+test('unfinished previous-preview sessions cannot be interpreted as revision counts', () =>
+{
     const f = fixture();
     const raw = JSON.stringify({ version: 1, entries: [{ path: 'A.md' }] });
     f.values.set('session-marks.v1:vault', raw);
@@ -90,7 +97,8 @@ test('unfinished previous-preview sessions cannot be interpreted as revision cou
     assert.equal(f.values.has(sessionStorageKey('vault', defaults)), false);
 });
 
-test('the exact legacy mapping copies pending state once, retaining originals', () => {
+test('the exact legacy mapping copies pending state once, retaining originals', () =>
+{
     const f = fixture();
     const raw = JSON.stringify({ version: 1, entries: [{ path: 'A.md' }] });
     f.values.set('session-marks.v1:vault', raw);

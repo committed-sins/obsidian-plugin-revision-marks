@@ -18,11 +18,12 @@
     "test": "node --test",
     "check": "npm run format:check && npm run build && npm test",
     "deploy": "npm run check && node scripts/deploy.mjs",
-    "format": "prettier --write \"src/**/*.mjs\" \"scripts/**/*.mjs\" \"tests/**/*.mjs\"",
-    "format:check": "prettier --check \"src/**/*.mjs\" \"scripts/**/*.mjs\" \"tests/**/*.mjs\""
+    "format": "dprint fmt",
+    "format:check": "dprint check"
   },
   "devDependencies": {
-    "esbuild": "0.28.2",
-    "prettier": "3.10.1"
+    "@dprint/typescript": "0.100.0",
+    "dprint": "0.64.3",
+    "esbuild": "0.28.2"
   }
 }

@@ -13,7 +13,8 @@ import { RevisionMarksSettingsTab } from './settings-tab.mjs';
 import { normalizeSettings } from './settings.mjs';
 
 /** Owns Obsidian registrations, persisted settings and serialized runtime restarts. */
-export default class RevisionMarksPlugin extends Plugin {
+export default class RevisionMarksPlugin extends Plugin
+{
     settings = normalizeSettings();
     /** @type {import('./obsidian-runtime.mjs').TrackingRuntime | null} */
     runtime = null;
@@ -21,7 +22,8 @@ export default class RevisionMarksPlugin extends Plugin {
     ready = false;
     stopping = false;
 
-    async onload() {
+    async onload()
+    {
         this.stopping = false;
         await this.loadSettings();
         this.addSettingTab(new RevisionMarksSettingsTab(this.app, this));
@@ -29,7 +31,8 @@ export default class RevisionMarksPlugin extends Plugin {
         this.app.workspace.onLayoutReady(() => this.onWorkspaceReady());
     }
 
-    async loadSettings() {
+    async loadSettings()
+    {
         try {
             const saved = await this.loadData();
             this.settings = normalizeSettings(saved ?? {});
@@ -39,7 +42,8 @@ export default class RevisionMarksPlugin extends Plugin {
         }
     }
 
-    registerCommands() {
+    registerCommands()
+    {
         this.addCommand({
             id: 'complete-current-session',
             name: 'Complete current session',
@@ -52,31 +56,38 @@ export default class RevisionMarksPlugin extends Plugin {
         });
     }
 
-    completeCurrentSession(checking) {
+    completeCurrentSession(checking)
+    {
         const path = this.app.workspace.getActiveFile()?.path;
         if (!this.runtime || !path?.endsWith('.md')) return false;
         if (!checking) void this.runtime.complete(path);
         return true;
     }
 
-    onWorkspaceReady() {
+    onWorkspaceReady()
+    {
         if (this.stopping) return;
         this.ready = true;
-        void this.restartTracking().catch((error) => {
+        void this.restartTracking().catch((error) =>
+        {
             console.error('Revision Marks startup failed', error);
             new Notice(`Revision Marks did not start: ${error.message}`, 10000);
         });
     }
 
-    enqueueRestart(operation) {
+    enqueueRestart(operation)
+    {
         const restart = this.restartQueue.then(operation);
         // Keep the queue usable after failure, while its caller still sees the error.
-        this.restartQueue = restart.catch(() => {});
+        this.restartQueue = restart.catch(() =>
+        {});
         return restart;
     }
 
-    restartTracking() {
-        return this.enqueueRestart(async () => {
+    restartTracking()
+    {
+        return this.enqueueRestart(async () =>
+        {
             const previous = this.runtime;
             this.runtime = null;
             await previous?.stop();
@@ -99,20 +110,24 @@ export default class RevisionMarksPlugin extends Plugin {
     }
 
     /** Allows lifecycle tests to replace the runtime without changing Obsidian's class. */
-    createRuntime(options) {
+    createRuntime(options)
+    {
         return startEditSessions(this.app, options);
     }
 
-    hasTrackingRuleChanges(settings) {
+    hasTrackingRuleChanges(settings)
+    {
         const namesChanged =
             JSON.stringify(settings.properties) !== JSON.stringify(this.settings.properties);
         const modeChanged = settings.revisionMode !== this.settings.revisionMode;
         return namesChanged || modeChanged;
     }
 
-    async applySettings(value) {
+    async applySettings(value)
+    {
         const settings = normalizeSettings(value);
-        const restart = this.enqueueRestart(async () => {
+        const restart = this.enqueueRestart(async () =>
+        {
             // Complete and checkpoint under the old names/mode before replacing the rules.
             const previous = this.runtime;
             await previous?.complete();
@@ -140,7 +155,8 @@ export default class RevisionMarksPlugin extends Plugin {
         await this.restartTracking();
     }
 
-    async onunload() {
+    async onunload()
+    {
         this.stopping = true;
         this.ready = false;
         const previous = this.runtime;

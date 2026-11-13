@@ -1,4 +1,5 @@
-export function sessionStorageKey(vaultIdentity, properties, revisionMode = 'counter') {
+export function sessionStorageKey(vaultIdentity, properties, revisionMode = 'counter')
+{
     return (
         'revision-marks.v2:' +
         vaultIdentity +
@@ -15,15 +16,15 @@ export function prepareSessionStorage(
     vaultIdentity,
     properties,
     revisionMode = 'counter',
-) {
+)
+{
     const key = sessionStorageKey(vaultIdentity, properties, revisionMode);
     // Timestamp-only fingerprints include the now unmanaged revision property.
     // Never reinterpret counter-mode baselines or pending write intentions.
     if (revisionMode === 'off') return key;
     const previousKey = key.replace(/^revision-marks\.v2:/, 'session-marks.v2:');
     const legacyKey = 'session-marks.v1:' + vaultIdentity;
-    const legacyNames =
-        properties.created === 'created' &&
+    const legacyNames = properties.created === 'created' &&
         properties.updated === 'updated' &&
         properties.revision === 'updated_count';
     const legacy = storage.getItem(legacyKey);

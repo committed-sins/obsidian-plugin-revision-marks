@@ -7,7 +7,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
     properties: DEFAULT_PROPERTIES,
 });
 
-export function normalizeSettings(value = {}) {
+export function normalizeSettings(value = {})
+{
     const list = (input, fallback) => [
         ...new Set(
             (Array.isArray(input) ? input : fallback)

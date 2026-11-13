@@ -2,12 +2,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const within = (parent, child) => {
+const within = (parent, child) =>
+{
     const relative = path.relative(parent, child);
     return relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative);
 };
 
-export async function deploy({ root, configName = '.obsidian', artifacts = 'dist' }) {
+export async function deploy({ root, configName = '.obsidian', artifacts = 'dist' })
+{
     if (!root) throw new Error('Set OBSIDIAN_VAULT to the test vault root.');
     const vault = await fs.realpath(path.resolve(root));
     if (path.isAbsolute(configName) || configName.split(/[\\/]/).some((part) => part === '..')) {

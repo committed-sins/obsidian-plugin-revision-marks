@@ -7,11 +7,12 @@ import { createSessionTracker } from '../src/session-tracker.mjs';
 // JSON mappings are valid YAML; isolate session behavior from Obsidian's YAML parser.
 const api = {
     properties: { created: 'created', updated: 'updated', revision: 'updated_count' },
-    getFrontMatterInfo(text) {
+    getFrontMatterInfo(text)
+    {
         const match = text.match(/^---\n([\s\S]*?)\n---\n/);
-        return match
-            ? { exists: true, frontmatter: match[1], contentStart: match[0].length }
-            : { exists: false };
+        return match ?
+            { exists: true, frontmatter: match[1], contentStart: match[0].length } :
+            { exists: false };
     },
     parseYaml: JSON.parse,
     formatDate: (iso) => iso,
@@ -19,13 +20,13 @@ const api = {
 const note = (body, fm = {}) => `---\n${JSON.stringify(fm)}\n---\n${body}`;
 const hash = async (text) => createHash('sha256').update(text).digest('hex');
 const properties = (text) =>
-    api.getFrontMatterInfo(text).exists
-        ? api.parseYaml(api.getFrontMatterInfo(text).frontmatter)
-        : {};
+    api.getFrontMatterInfo(text).exists ?
+        api.parseYaml(api.getFrontMatterInfo(text).frontmatter) :
+        {};
 const bodyOf = (text) =>
-    api.getFrontMatterInfo(text).exists
-        ? text.slice(api.getFrontMatterInfo(text).contentStart)
-        : text;
+    api.getFrontMatterInfo(text).exists ?
+        text.slice(api.getFrontMatterInfo(text).contentStart) :
+        text;
 const initial = {
     created: '2025-01-01T00:00:00Z',
     id: 'stable-id',
@@ -33,7 +34,8 @@ const initial = {
     updated_count: 7,
     tags: ['home'],
 };
-function fixture() {
+function fixture()
+{
     const files = new Map([['notes/A.md', note('before', initial)]]);
     const storageData = new Map();
     const errors = [],
@@ -53,7 +55,8 @@ function fixture() {
         read: async (path) => files.get(path),
         isActive: (path) => path === active,
         report: (error) => errors.push(error),
-        write: async (path, intent, expected) => {
+        write: async (path, intent, expected) =>
+        {
             const fm = properties(files.get(path));
             assert.equal(fm.updated_count ?? 0, expected.count);
             files.set(
@@ -70,7 +73,8 @@ function fixture() {
         },
     };
     const tracker = createSessionTracker(options);
-    const edit = (text, path = 'notes/A.md') => {
+    const edit = (text, path = 'notes/A.md') =>
+    {
         tracker.change(path, files.get(path) ?? '', text);
         files.set(path, text);
     };
@@ -82,16 +86,19 @@ function fixture() {
         errors,
         storageData,
         options,
-        leave: () => {
+        leave: () =>
+        {
             active = 'notes/B.md';
         },
-        failAfterWrite: () => {
+        failAfterWrite: () =>
+        {
             failAfterWrite = true;
         },
     };
 }
 
-test('comparison ignores owned metadata and property order, but retains meaningful properties and body whitespace', () => {
+test('comparison ignores owned metadata and property order, but retains meaningful properties and body whitespace', () =>
+{
     assert.equal(
         comparableContent(note('text', initial), api),
         comparableContent(
@@ -119,7 +126,8 @@ test('comparison ignores owned metadata and property order, but retains meaningf
     );
 });
 
-test('a disabled revision property becomes meaningful content rather than owned metadata', () => {
+test('a disabled revision property becomes meaningful content rather than owned metadata', () =>
+{
     const off = { ...api, revisionMode: 'off' };
     assert.notEqual(
         comparableContent(note('body', initial), off),
@@ -131,7 +139,8 @@ test('a disabled revision property becomes meaningful content rather than owned 
     );
 });
 
-test('many edits/checkpoints and manual saves count once only after leaving; last edit time is used', async () => {
+test('many edits/checkpoints and manual saves count once only after leaving; last edit time is used', async () =>
+{
     const f = fixture();
     f.edit(note('changed', initial));
     await f.tracker.checkpoint();
@@ -150,7 +159,8 @@ test('many edits/checkpoints and manual saves count once only after leaving; las
     });
 });
 
-test('complete undo produces no write and no increment', async () => {
+test('complete undo produces no write and no increment', async () =>
+{
     const f = fixture();
     f.edit(note('changed', initial));
     await f.tracker.checkpoint();
@@ -161,7 +171,8 @@ test('complete undo produces no write and no increment', async () => {
     assert.equal(f.tracker.paths().length, 0);
 });
 
-test('excluded folders are not tracked, while the vault root is', async () => {
+test('excluded folders are not tracked, while the vault root is', async () =>
+{
     const f = fixture();
     for (const folder of ['archives', 'scripts', 'libraries', 'templates', 'inbound'])
         f.tracker.change(`${folder}/A.md`, 'old', 'new');
@@ -173,7 +184,8 @@ test('excluded folders are not tracked, while the vault root is', async () => {
     assert.equal(properties(f.files.get('Root.md')).updated_count, 1);
 });
 
-test('restart recovers a checkpointed session, without scanning or counting unchanged notes', async () => {
+test('restart recovers a checkpointed session, without scanning or counting unchanged notes', async () =>
+{
     const f = fixture();
     f.edit(note('changed', initial));
     await f.tracker.checkpoint();
@@ -184,7 +196,8 @@ test('restart recovers a checkpointed session, without scanning or counting unch
     assert.equal(recovered.paths().length, 0);
 });
 
-test('interruption after frontmatter commit does not increment again on recovery', async () => {
+test('interruption after frontmatter commit does not increment again on recovery', async () =>
+{
     const f = fixture();
     f.edit(note('changed', initial));
     f.leave();
@@ -197,7 +210,8 @@ test('interruption after frontmatter commit does not increment again on recovery
     assert.equal(recovered.paths().length, 0);
 });
 
-test('a missing creation field is filled from the final updated value and recovery does not double count its insertion', async () => {
+test('a missing creation field is filled from the final updated value and recovery does not double count its insertion', async () =>
+{
     const f = fixture();
     const withoutCreated = { ...initial };
     delete withoutCreated.created;
@@ -215,7 +229,8 @@ test('a missing creation field is filled from the final updated value and recove
     assert.deepEqual(recovered.paths(), []);
 });
 
-test('content comparison and metadata extraction follow custom property names', () => {
+test('content comparison and metadata extraction follow custom property names', () =>
+{
     const customApi = {
         ...api,
         properties: { created: 'born', updated: 'touched', revision: 'updated_revision' },
@@ -231,7 +246,8 @@ test('content comparison and metadata extraction follow custom property names', 
     );
 });
 
-test('unknown external content without mtime is retained; already-stamped sync is not counted again', async () => {
+test('unknown external content without mtime is retained; already-stamped sync is not counted again', async () =>
+{
     const f = fixture();
     f.edit(note('changed', initial));
     await f.tracker.checkpoint();
@@ -247,7 +263,8 @@ test('unknown external content without mtime is retained; already-stamped sync i
     assert.deepEqual(f.tracker.paths(), []);
 });
 
-test('explicit save ends an active session; continuing afterwards starts another and repeated saves are no-ops', async () => {
+test('explicit save ends an active session; continuing afterwards starts another and repeated saves are no-ops', async () =>
+{
     const f = fixture();
     f.edit(note('first', initial));
     await f.tracker.finish('notes/A.md', { force: true });
@@ -258,7 +275,8 @@ test('explicit save ends an active session; continuing afterwards starts another
     assert.equal(properties(f.files.get('notes/A.md')).updated_count, 9);
 });
 
-test('file baselines detect property/body changes, use mtime, and avoid counting changed sync metadata', async () => {
+test('file baselines detect property/body changes, use mtime, and avoid counting changed sync metadata', async () =>
+{
     const f = fixture();
     let mtime = Date.parse('2026-11-11T14:00:00Z');
     f.options.read = async (path) => ({ text: f.files.get(path), mtime });
@@ -287,7 +305,8 @@ test('file baselines detect property/body changes, use mtime, and avoid counting
     assert.deepEqual(tracker.paths(), [], 'timestamp already changed remotely');
 });
 
-test('metadata-only writes and complete property undo do not create a session', async () => {
+test('metadata-only writes and complete property undo do not create a session', async () =>
+{
     const f = fixture();
     await f.tracker.observe('notes/A.md', note('before', initial), 1000);
     await f.tracker.observe('notes/A.md', note('before', { ...initial, updated_count: 9 }), 2000);
@@ -302,7 +321,8 @@ test('metadata-only writes and complete property undo do not create a session', 
     assert.deepEqual(f.tracker.paths(), []);
 });
 
-test('persisted baseline catches unstamped edits made while Obsidian was closed', async () => {
+test('persisted baseline catches unstamped edits made while Obsidian was closed', async () =>
+{
     const f = fixture();
     await f.tracker.observe('notes/A.md', f.files.get('notes/A.md'), 1000);
     await f.tracker.checkpoint();
@@ -315,15 +335,18 @@ test('persisted baseline catches unstamped edits made while Obsidian was closed'
     assert.equal(properties(f.files.get('notes/A.md')).updated, new Date(changedAt).toISOString());
 });
 
-test('timestamp advances only when older than mtime; equal/newer timestamps retain their spelling while the session counts', async () => {
+test('timestamp advances only when older than mtime; equal/newer timestamps retain their spelling while the session counts', async () =>
+{
     const mtime = Date.parse('2026-11-11T12:00:00Z');
-    for (const [existing, expected] of [
-        ['2026-11-11T11:59:59Z', '2026-11-11T12:00:00.000Z'],
-        ['2026-11-11T13:00:00+01:00', '2026-11-11T13:00:00+01:00'],
-        ['2026-11-12T12:00:00Z', '2026-11-12T12:00:00Z'],
-        ['invalid', '2026-11-11T12:00:00.000Z'],
-        [undefined, '2026-11-11T12:00:00.000Z'],
-    ]) {
+    for (
+        const [existing, expected] of [
+            ['2026-11-11T11:59:59Z', '2026-11-11T12:00:00.000Z'],
+            ['2026-11-11T13:00:00+01:00', '2026-11-11T13:00:00+01:00'],
+            ['2026-11-12T12:00:00Z', '2026-11-12T12:00:00Z'],
+            ['invalid', '2026-11-11T12:00:00.000Z'],
+            [undefined, '2026-11-11T12:00:00.000Z'],
+        ]
+    ) {
         const f = fixture();
         const fm = { ...initial, updated: existing };
         const before = note('before', fm),
@@ -339,7 +362,8 @@ test('timestamp advances only when older than mtime; equal/newer timestamps reta
     }
 });
 
-test('moving a folder into an exclusion removes its baselines and sessions without breaking the next load', async () => {
+test('moving a folder into an exclusion removes its baselines and sessions without breaking the next load', async () =>
+{
     const f = fixture();
     await f.tracker.observe('notes/A.md', f.files.get('notes/A.md'), 1000);
     f.edit(note('changed', initial));
@@ -352,10 +376,12 @@ test('moving a folder into an exclusion removes its baselines and sessions witho
     assert.equal(f.errors.length, 0);
 });
 
-test('new input during forced completion defers the write instead of discarding that input', async () => {
+test('new input during forced completion defers the write instead of discarding that input', async () =>
+{
     const f = fixture();
     let tracker;
-    f.options.read = async (path) => {
+    f.options.read = async (path) =>
+    {
         const text = f.files.get(path);
         tracker.change(path, text, note('typed while saving', initial));
         f.files.set(path, note('typed while saving', initial));
@@ -369,7 +395,8 @@ test('new input during forced completion defers the write instead of discarding 
     assert.deepEqual(tracker.paths(), ['notes/A.md']);
 });
 
-test('rename keeps the session, delete drops it', async () => {
+test('rename keeps the session, delete drops it', async () =>
+{
     const f = fixture();
     f.edit(note('changed', initial));
     await f.tracker.checkpoint();
@@ -384,7 +411,8 @@ test('rename keeps the session, delete drops it', async () => {
     assert.equal(f.tracker.paths().length, 0);
 });
 
-test('changing plugin exclusions skips previously stored sessions and baselines without disabling other tracking', async () => {
+test('changing plugin exclusions skips previously stored sessions and baselines without disabling other tracking', async () =>
+{
     const f = fixture();
     await f.tracker.observe('notes/A.md', f.files.get('notes/A.md'), 1000);
     f.edit(note('changed', initial));
@@ -402,7 +430,8 @@ test('changing plugin exclusions skips previously stored sessions and baselines 
     assert.equal(f.errors.length, 0);
 });
 
-test('invalid YAML/count and an unreadable journal never cause destructive replacement', async () => {
+test('invalid YAML/count and an unreadable journal never cause destructive replacement', async () =>
+{
     const f = fixture();
     f.edit(note('changed', { ...initial, updated_count: 'seven' }));
     // Baseline is valid, but the current invalid counter prevents the write.

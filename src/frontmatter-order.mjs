@@ -6,7 +6,8 @@ export function addSessionProperties(
     values,
     properties = DEFAULT_PROPERTIES,
     revisionMode = 'counter',
-) {
+)
+{
     const managed = [
         properties.created,
         properties.updated,

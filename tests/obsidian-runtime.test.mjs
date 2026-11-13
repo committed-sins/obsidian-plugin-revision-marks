@@ -2,16 +2,18 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { startEditSessions } from '../src/obsidian-runtime.mjs';
 
-const info = (text) => {
+const info = (text) =>
+{
     const match = text.match(/^---\n([\s\S]*?)\n---\n/);
-    return match
-        ? { exists: true, frontmatter: match[1], contentStart: match[0].length }
-        : { exists: false };
+    return match ?
+        { exists: true, frontmatter: match[1], contentStart: match[0].length } :
+        { exists: false };
 };
 const note = (body, count = 4) =>
     `---\n${JSON.stringify({ updated_count: count, id: 'kept' })}\n---\n${body}`;
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-test('editor integration counts only full-note user input; leaving commits native-saved content once', async () => {
+test('editor integration counts only full-note user input; leaving commits native-saved content once', async () =>
+{
     const priorStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
     const journal = new Map();
     Object.defineProperty(globalThis, 'localStorage', {
@@ -23,7 +25,8 @@ test('editor integration counts only full-note user input; leaving commits nativ
     });
     const callbacks = new Map();
     const emitter = (prefix) => ({
-        on: (name, callback) => {
+        on: (name, callback) =>
+        {
             const key = prefix + name;
             callbacks.set(key, callback);
             return key;
@@ -43,7 +46,8 @@ test('editor integration counts only full-note user input; leaving commits nativ
         file,
         editor: { getValue: () => buffer },
         getViewData: () => buffer,
-        save: async () => {
+        save: async () =>
+        {
             saves++;
             disk = buffer;
         },
@@ -53,7 +57,8 @@ test('editor integration counts only full-note user input; leaving commits nativ
         plugins: {
             plugins: {
                 'revision-marks': {
-                    registerEditorExtension: (value) => {
+                    registerEditorExtension: (value) =>
+                    {
                         extension = value;
                         registrations++;
                     },
@@ -73,7 +78,8 @@ test('editor integration counts only full-note user input; leaving commits nativ
             read: async () => disk,
         },
         fileManager: {
-            processFrontMatter: async (_file, update) => {
+            processFrontMatter: async (_file, update) =>
+            {
                 writes++;
                 const fm = JSON.parse(info(disk).frontmatter);
                 update(fm);
@@ -89,13 +95,16 @@ test('editor integration counts only full-note user input; leaving commits nativ
         properties: { created: 'created', updated: 'updated', revision: 'updated_count' },
         EditorView: { updateListener: { of: (callback) => callback } },
         editorInfoField: 'info',
-        Notice: class {
-            constructor(message) {
+        Notice: class
+        {
+            constructor(message)
+            {
                 notices.push(message);
             }
         },
     };
-    const dispatch = (before, after, event, editorValue = after) => {
+    const dispatch = (before, after, event, editorValue = after) =>
+    {
         buffer = editorValue;
         extension({
             docChanged: true,
@@ -142,7 +151,8 @@ test('editor integration counts only full-note user input; leaving commits nativ
     assert.equal(callbacks.size, 0);
 });
 
-test('save command and Bases/properties complete sessions; quit and Android background defer metadata safely', async () => {
+test('save command and Bases/properties complete sessions; quit and Android background defer metadata safely', async () =>
+{
     const originals = new Map(
         ['localStorage', 'document', 'window'].map((name) => [
             name,
@@ -153,7 +163,8 @@ test('save command and Bases/properties complete sessions; quit and Android back
         callbacks = new Map(),
         domCallbacks = new Map();
     const emitter = (prefix) => ({
-        on: (name, callback) => {
+        on: (name, callback) =>
+        {
             const key = prefix + name;
             callbacks.set(key, callback);
             return key;
@@ -165,14 +176,16 @@ test('save command and Bases/properties complete sessions; quit and Android back
         removeEventListener: (name) => domCallbacks.delete(prefix + name),
     });
     const document = { ...surface('document:'), visibilityState: 'visible' };
-    for (const [name, value] of Object.entries({
-        document,
-        window: surface('window:'),
-        localStorage: {
-            getItem: (key) => journal.get(key),
-            setItem: (key, value) => journal.set(key, value),
-        },
-    }))
+    for (
+        const [name, value] of Object.entries({
+            document,
+            window: surface('window:'),
+            localStorage: {
+                getItem: (key) => journal.get(key),
+                setItem: (key, value) => journal.set(key, value),
+            },
+        })
+    )
         Object.defineProperty(globalThis, name, { configurable: true, value });
     const file = { path: 'notes/A.md', stat: { mtime: 1700000000000 } };
     let active = file,
@@ -185,14 +198,16 @@ test('save command and Bases/properties complete sessions; quit and Android back
         file,
         editor: { getValue: () => buffer },
         getViewData: () => buffer,
-        save: async () => {
+        save: async () =>
+        {
             if (buffer !== disk) {
                 disk = buffer;
                 file.stat.mtime += 1000;
             }
         },
     };
-    const originalSave = (checking) => {
+    const originalSave = (checking) =>
+    {
         if (!checking) void view.save();
         return true;
     };
@@ -203,7 +218,8 @@ test('save command and Bases/properties complete sessions; quit and Android back
         plugins: {
             plugins: {
                 'revision-marks': {
-                    registerEditorExtension: (value) => {
+                    registerEditorExtension: (value) =>
+                    {
                         extension = value;
                     },
                 },
@@ -223,11 +239,14 @@ test('save command and Bases/properties complete sessions; quit and Android back
             read: async () => disk,
         },
         fileManager: {
-            processFrontMatter: async (_file, update) => {
+            processFrontMatter: async (_file, update) =>
+            {
                 const metadata = fm();
                 update(metadata);
                 writes++;
-                disk = `---\n${JSON.stringify(metadata)}\n---\n${disk.slice(info(disk).contentStart)}`;
+                disk = `---\n${JSON.stringify(metadata)}\n---\n${
+                    disk.slice(info(disk).contentStart)
+                }`;
                 buffer = disk;
                 file.stat.mtime += 1000;
                 void callbacks.get('vault:modify')?.(file); // Must not create a feedback loop.
@@ -242,13 +261,16 @@ test('save command and Bases/properties complete sessions; quit and Android back
         Platform: { isMobile: true },
         EditorView: { updateListener: { of: (callback) => callback } },
         editorInfoField: 'info',
-        Notice: class {
-            constructor(message) {
+        Notice: class
+        {
+            constructor(message)
+            {
                 notices.push(message);
             }
         },
     };
-    const edit = (text) => {
+    const edit = (text) =>
+    {
         const before = buffer;
         buffer = `---\n${JSON.stringify(fm())}\n---\n${text}`;
         extension({
@@ -335,7 +357,16 @@ test('save command and Bases/properties complete sessions; quit and Android back
         await wait(60);
         assert.equal(fm().updated_count, 11);
         disk =
-            buffer = `---\n${JSON.stringify({ id: 'kept', created: '2026-01-01', updated: 'older', tags: ['keep'], custom: { nested: true } })}\n---\nbefore counter`;
+            buffer =
+                `---\n${
+                    JSON.stringify({
+                        id: 'kept',
+                        created: '2026-01-01',
+                        updated: 'older',
+                        tags: ['keep'],
+                        custom: { nested: true },
+                    })
+                }\n---\nbefore counter`;
         edit('after counter');
         command.checkCallback(false);
         await wait(60);
@@ -359,7 +390,16 @@ test('save command and Bases/properties complete sessions; quit and Android back
             revision: 'updated_revision',
         };
         disk =
-            buffer = `---\n${JSON.stringify({ id: 'kept', title: 'before block', touched: 'old', custom: true, updated_count: 40 })}\n---\ncustom before`;
+            buffer =
+                `---\n${
+                    JSON.stringify({
+                        id: 'kept',
+                        title: 'before block',
+                        touched: 'old',
+                        custom: true,
+                        updated_count: 40,
+                    })
+                }\n---\ncustom before`;
         runtime = startEditSessions(app, {
             ...api,
             properties: customProperties,
@@ -386,7 +426,16 @@ test('save command and Bases/properties complete sessions; quit and Android back
         ]);
         // Once complete, even an intentionally scattered order is kept on the next session.
         disk =
-            buffer = `---\n${JSON.stringify({ updated_revision: 1, title: 'between', touched: fm().touched, custom: true, born: fm().born })}\n---\nmanual order`;
+            buffer =
+                `---\n${
+                    JSON.stringify({
+                        updated_revision: 1,
+                        title: 'between',
+                        touched: fm().touched,
+                        custom: true,
+                        born: fm().born,
+                    })
+                }\n---\nmanual order`;
         const manualOrder = Object.keys(fm());
         edit('manual order edited');
         command.checkCallback(false);

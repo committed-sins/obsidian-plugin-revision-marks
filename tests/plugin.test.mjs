@@ -6,14 +6,16 @@ import { normalizeSettings } from '../src/settings.mjs';
 
 // Exercise the actual bundled, top-level Obsidian classes. Keep the host realm
 // so strict assertions compare ordinary objects without cross-realm prototypes.
-function loadPlugin(api) {
+function loadPlugin(api)
+{
     const module = { exports: {} };
     const source = readFileSync(new URL('../dist/main.js', import.meta.url), 'utf8');
     const initialize = runInThisContext(
         '(function(require, module, exports) {\n' + source + '\n})',
     );
     initialize(
-        (name) => {
+        (name) =>
+        {
             if (name === 'obsidian') return api;
             if (name === '@codemirror/view') return { EditorView: {} };
             throw new Error('Unexpected runtime dependency: ' + name);
@@ -24,56 +26,70 @@ function loadPlugin(api) {
     return module.exports.default;
 }
 
-function fixture(data = {}) {
+function fixture(data = {})
+{
     const events = [],
         notices = [],
         commands = [],
         tabs = [];
     let ready;
-    class Plugin {
+    class Plugin
+    {
         app = {
             workspace: {
-                onLayoutReady: (callback) => {
+                onLayoutReady: (callback) =>
+                {
                     ready = callback;
                 },
                 getActiveFile: () => ({ path: 'notes/Example.md' }),
             },
         };
-        async loadData() {
+        async loadData()
+        {
             return data;
         }
-        async saveData(value) {
+        async saveData(value)
+        {
             events.push(['save-settings', value]);
         }
-        addCommand(command) {
+        addCommand(command)
+        {
             commands.push(command);
         }
-        addSettingTab(tab) {
+        addSettingTab(tab)
+        {
             tabs.push(tab);
         }
     }
     const api = {
         Plugin,
-        PluginSettingTab: class {
-            constructor(app, plugin) {
+        PluginSettingTab: class
+        {
+            constructor(app, plugin)
+            {
                 this.app = app;
                 this.plugin = plugin;
             }
         },
-        Notice: class {
-            constructor(message) {
+        Notice: class
+        {
+            constructor(message)
+            {
                 notices.push(message);
             }
         },
         moment: () => ({ format: (pattern) => pattern }),
     };
-    const start = (app, runtimeApi) => {
+    const start = (app, runtimeApi) =>
+    {
         events.push(['start', runtimeApi]);
         return {
-            stop: async () => {
+            stop: async () =>
+            {
                 events.push(['stop']);
             },
-            complete: (path) => {
+            complete: (path) =>
+            {
                 events.push(['complete', path]);
             },
             pendingPaths: () => [],
@@ -89,14 +105,16 @@ function fixture(data = {}) {
         events,
         notices,
         commands,
-        ready: async () => {
+        ready: async () =>
+        {
             ready();
             await plugin.restartQueue;
         },
     };
 }
 
-test('standalone lifecycle waits for layout, supplies its own owner, and completes through commands', async () => {
+test('standalone lifecycle waits for layout, supplies its own owner, and completes through commands', async () =>
+{
     const f = fixture();
     await f.plugin.onload();
     assert.equal(f.events.length, 0);
@@ -119,7 +137,8 @@ test('standalone lifecycle waits for layout, supplies its own owner, and complet
     assert.deepEqual(f.events.at(-1), ['stop']);
 });
 
-test('settings apply completes the old runtime before saving and starting the new rules', async () => {
+test('settings apply completes the old runtime before saving and starting the new rules', async () =>
+{
     const f = fixture();
     await f.plugin.onload();
     await f.ready();
@@ -140,7 +159,8 @@ test('settings apply completes the old runtime before saving and starting the ne
     await f.plugin.onunload();
 });
 
-test('unloading before layout does not start a late writer', async () => {
+test('unloading before layout does not start a late writer', async () =>
+{
     const f = fixture();
     await f.plugin.onload();
     await f.plugin.onunload();
@@ -148,12 +168,14 @@ test('unloading before layout does not start a late writer', async () => {
     assert.equal(f.events.length, 0);
 });
 
-test('unload invalidates the runtime synchronously before awaiting restart work', async () => {
+test('unload invalidates the runtime synchronously before awaiting restart work', async () =>
+{
     const f = fixture();
     await f.plugin.onload();
     await f.ready();
     let release;
-    f.plugin.restartQueue = new Promise((resolve) => {
+    f.plugin.restartQueue = new Promise((resolve) =>
+    {
         release = resolve;
     });
     const unloading = f.plugin.onunload();
@@ -163,7 +185,8 @@ test('unload invalidates the runtime synchronously before awaiting restart work'
     await unloading;
 });
 
-test('invalid settings fail without starting or overwriting recovery state', async () => {
+test('invalid settings fail without starting or overwriting recovery state', async () =>
+{
     const f = fixture({ excludedFolders: ['../other-vault'] });
     await assert.rejects(f.plugin.onload(), /relative vault folders/);
     assert.equal(f.events.length, 0);
@@ -185,43 +208,55 @@ test('invalid settings fail without starting or overwriting recovery state', asy
     assert.throws(() => normalizeSettings({ properties: { revision: '__proto__' } }), /non-empty/);
 });
 
-test('revision dropdown defaults to Counter and applies Off with a disabled property-name input', async () => {
+test('revision dropdown defaults to Counter and applies Off with a disabled property-name input', async () =>
+{
     const f = fixture(),
         controls = new Map();
-    f.api.Setting = class {
-        setName(name) {
+    f.api.Setting = class
+    {
+        setName(name)
+        {
             this.name = name;
             return this;
         }
-        setDesc() {
+        setDesc()
+        {
             return this;
         }
-        control(fn) {
+        control(fn)
+        {
             const control = {
                 options: {},
-                addOption(key, label) {
+                addOption(key, label)
+                {
                     this.options[key] = label;
                     return this;
                 },
-                setValue(value) {
+                setValue(value)
+                {
                     this.value = value;
                     return this;
                 },
-                onChange(fn) {
+                onChange(fn)
+                {
                     this.change = fn;
                     return this;
                 },
-                setDisabled(value) {
+                setDisabled(value)
+                {
                     this.disabled = value;
                     return this;
                 },
-                setButtonText() {
+                setButtonText()
+                {
                     return this;
                 },
-                setCta() {
+                setCta()
+                {
                     return this;
                 },
-                onClick(fn) {
+                onClick(fn)
+                {
                     this.click = fn;
                     return this;
                 },
@@ -230,31 +265,45 @@ test('revision dropdown defaults to Counter and applies Off with a disabled prop
             fn(control);
             return this;
         }
-        addDropdown(fn) {
+        addDropdown(fn)
+        {
             return this.control(fn);
         }
-        addText(fn) {
+        addText(fn)
+        {
             return this.control(fn);
         }
-        addTextArea(fn) {
+        addTextArea(fn)
+        {
             return this.control(fn);
         }
-        addButton(fn) {
+        addButton(fn)
+        {
             return this.control(fn);
         }
     };
-    f.api.SettingGroup = class {
-        setHeading() {
+    f.api.SettingGroup = class
+    {
+        setHeading()
+        {
             return this;
         }
-        addSetting(fn) {
+        addSetting(fn)
+        {
             fn(new f.api.Setting());
             return this;
         }
     };
     await f.plugin.onload();
     await f.ready();
-    f.tabs[0].containerEl = { empty() {}, addClass() {}, createEl() {} };
+    f.tabs[0].containerEl = {
+        empty()
+        {},
+        addClass()
+        {},
+        createEl()
+        {},
+    };
     f.tabs[0].display();
     controls.get('Created property').change('unsaved-name');
     assert.equal(f.plugin.settings.properties.created, 'created');
@@ -277,7 +326,8 @@ test('revision dropdown defaults to Counter and applies Off with a disabled prop
     await f.plugin.onunload();
 });
 
-test('changing revision mode is refused while old sessions remain pending', async () => {
+test('changing revision mode is refused while old sessions remain pending', async () =>
+{
     const f = fixture();
     await f.plugin.onload();
     await f.ready();
@@ -295,7 +345,8 @@ test('changing revision mode is refused while old sessions remain pending', asyn
     await f.plugin.onunload();
 });
 
-test('changing property names is refused while failed old sessions remain, and tracking resumes under old names', async () => {
+test('changing property names is refused while failed old sessions remain, and tracking resumes under old names', async () =>
+{
     const f = fixture();
     await f.plugin.onload();
     await f.ready();
@@ -312,14 +363,21 @@ test('changing property names is refused while failed old sessions remain, and t
     await f.plugin.onunload();
 });
 
-test('built entry exports an Obsidian plugin with only Obsidian/CodeMirror runtime dependencies', () => {
+test('built entry exports an Obsidian plugin with only Obsidian/CodeMirror runtime dependencies', () =>
+{
     const requireCalls = [];
-    const api = { Plugin: class {}, PluginSettingTab: class {} };
+    const api = {
+        Plugin: class
+        {},
+        PluginSettingTab: class
+        {},
+    };
     const module = { exports: {} };
     runInNewContext(readFileSync(new URL('../dist/main.js', import.meta.url), 'utf8'), {
         module,
         exports: module.exports,
-        require: (name) => {
+        require: (name) =>
+        {
             requireCalls.push(name);
             if (name === 'obsidian') return api;
             if (name === '@codemirror/view') return { EditorView: {} };
