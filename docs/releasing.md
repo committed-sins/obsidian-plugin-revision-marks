@@ -9,9 +9,9 @@ The repository owner submits the plugin; publication of a GitHub release alone d
 - Version/tag: `0.1.7`
 - License: MIT
 - Release assets: `main.js`, `manifest.json`, `styles.css`
-- Beta identification: README, plugin description, settings introduction and GitHub prerelease status.
+- Beta identification: README, plugin description, settings introduction and release notes.
 
-The manifest uses a plain `x.y.z` version for Obsidian compatibility. Beta status is explicit rather than encoded as a version suffix. The build embeds the MIT license in `main.js` so installed copies retain the notice.
+The manifest uses a plain `x.y.z` version for Obsidian compatibility. The Community publisher requires a regular GitHub release matching that version; do not mark it as a prerelease. Beta status stays explicit in the text rather than the version or GitHub release flag. The build embeds the MIT license in `main.js` so installed copies retain the notice.
 
 ## Submit
 
