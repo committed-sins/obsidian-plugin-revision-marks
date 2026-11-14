@@ -1,2 +1,7 @@
 * text=auto
 *.md text eol=lf
+*.mjs text eol=crlf
+*.json text eol=crlf
+*.css text eol=crlf
+*.yml text eol=lf
+LICENSE text eol=lf

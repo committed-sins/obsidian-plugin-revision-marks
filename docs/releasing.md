@@ -24,4 +24,19 @@ See Obsidian's [current submission guide](https://docs.obsidian.md/plugins/relea
 
 ## Later releases
 
-Update `manifest.json`, `package.json`, `package-lock.json`, `versions.json` and the changelog. Run `npm run check`, commit with a verified signature, tag the same version and attach the three `dist/` files to the matching release. Never include settings, recovery data or vault notes. A first-submission review does not establish Android lifecycle correctness; keep beta notes current until live validation is complete.
+Update `manifest.json`, `package.json`, `package-lock.json`, `versions.json` and the changelog. Run `npm run check`, commit with a verified signature and push a matching version tag. Wait for **Build and attest** to succeed, then download that run's `revision-marks-<commit>` artifact and attach its three files to the regular GitHub release. Do not substitute a separate local build: its bytes may differ and therefore lack the CI attestation. Never include settings, recovery data or vault notes.
+
+The workflow also runs on `main` and can be started manually. It checks out its own source commit, installs the locked dependencies, runs formatting/build/tests, then uses GitHub's artifact attestation action for all three generated files. No release or existing asset is overwritten automatically. Actions are pinned to commit IDs; the job has read-only repository access plus only the OIDC/attestation permissions needed for provenance.
+
+Git attributes make source and copied-asset line endings consistent on Windows and Linux, retaining the existing CRLF assets and LF license banner. An older release can gain a verifiable rebuild without replacing assets only when its downloaded files have exactly the same digests as the attested build. The attestation identifies the rebuild's workflow commit; it does not rewrite the original tag or the historical upload event.
+
+Verify downloads, not just the local build:
+
+```sh
+gh release download 0.1.7 -R committed-sins/obsidian-plugin-revision-marks
+gh attestation verify main.js -R committed-sins/obsidian-plugin-revision-marks
+gh attestation verify manifest.json -R committed-sins/obsidian-plugin-revision-marks
+gh attestation verify styles.css -R committed-sins/obsidian-plugin-revision-marks
+```
+
+See GitHub's [artifact attestation documentation](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations). Provenance is evidence of a source build, not a guarantee of functional correctness. A first-submission review does not establish Android lifecycle correctness; keep beta notes current until live validation is complete.
