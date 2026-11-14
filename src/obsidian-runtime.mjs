@@ -1,5 +1,5 @@
 import { registerSaveCommand } from './save-command.mjs';
-import { EXCLUDED_FOLDERS, eligibleNote } from './note-paths.mjs';
+import { DEFAULT_EXCLUDED_FOLDERS, eligibleNote } from './note-paths.mjs';
 import { comparableContent } from './note-content.mjs';
 import { createNoteAccess } from './note-access.mjs';
 import { createSessionTracker } from './session-tracker.mjs';
@@ -21,7 +21,7 @@ export function startEditSessions(app, api)
     const owner = api.owner;
     if (!owner?.registerEditorExtension)
         throw new Error('Revision Marks requires its plugin lifecycle owner');
-    const eligible = (path) => eligibleNote(path, api.excludedFolders ?? EXCLUDED_FOLDERS);
+    const eligible = (path) => eligibleNote(path, api.excludedFolders ?? DEFAULT_EXCLUDED_FOLDERS);
     const slotKey = Symbol.for('revision-marks.editorListener');
     // Keep one extension per plugin instance, including settings restarts.
     if (!owner[slotKey]) {

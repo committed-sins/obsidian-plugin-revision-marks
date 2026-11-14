@@ -121,6 +121,7 @@ test('standalone lifecycle waits for layout, supplies its own owner, and complet
     await f.ready();
     assert.equal(f.events[0][0], 'start');
     assert.equal(f.events[0][1].owner, f.plugin);
+    assert.deepEqual(f.events[0][1].excludedFolders, []);
     assert.deepEqual(f.events[0][1].properties, {
         created: 'created',
         updated: 'updated',
@@ -156,6 +157,18 @@ test('settings apply completes the old runtime before saving and starting the ne
         updated: 'touched',
         revision: 'updated_revision',
     });
+    await f.plugin.onunload();
+});
+
+test('loading an existing personal exclusion list preserves it without rewriting settings', async () =>
+{
+    const saved = ['archives', 'scripts', 'libraries', 'templates', 'inbound'];
+    const f = fixture({ excludedFolders: saved });
+    await f.plugin.onload();
+    await f.ready();
+    assert.deepEqual(f.plugin.settings.excludedFolders, saved);
+    assert.deepEqual(f.events[0][1].excludedFolders, saved);
+    assert.equal(f.events.some(event => event[0] === 'save-settings'), false);
     await f.plugin.onunload();
 });
 
@@ -305,6 +318,7 @@ test('revision dropdown defaults to Counter and applies Off with a disabled prop
         {},
     };
     f.tabs[0].display();
+    assert.equal(controls.get('Excluded folders').value, '');
     controls.get('Created property').change('unsaved-name');
     assert.equal(f.plugin.settings.properties.created, 'created');
     f.tabs[0].display();

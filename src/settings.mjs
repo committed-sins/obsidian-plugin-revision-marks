@@ -1,9 +1,9 @@
-import { EXCLUDED_FOLDERS } from './note-paths.mjs';
+import { DEFAULT_EXCLUDED_FOLDERS } from './note-paths.mjs';
 import { DEFAULT_PROPERTIES, normalizeProperties } from './properties.mjs';
 
 export const DEFAULT_SETTINGS = Object.freeze({
     revisionMode: 'counter',
-    excludedFolders: EXCLUDED_FOLDERS,
+    excludedFolders: DEFAULT_EXCLUDED_FOLDERS,
     properties: DEFAULT_PROPERTIES,
 });
 

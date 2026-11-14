@@ -3,6 +3,7 @@ import test from 'node:test';
 import { createHash } from 'node:crypto';
 import { comparableContent } from '../src/note-content.mjs';
 import { createSessionTracker } from '../src/session-tracker.mjs';
+import { eligibleNote } from '../src/note-paths.mjs';
 
 // JSON mappings are valid YAML; isolate session behavior from Obsidian's YAML parser.
 const api = {
@@ -34,7 +35,7 @@ const initial = {
     updated_count: 7,
     tags: ['home'],
 };
-function fixture()
+function fixture({ excludedFolders = [] } = {})
 {
     const files = new Map([['notes/A.md', note('before', initial)]]);
     const storageData = new Map();
@@ -54,6 +55,7 @@ function fixture()
         exists: (path) => files.has(path),
         read: async (path) => files.get(path),
         isActive: (path) => path === active,
+        isEligible: (path) => eligibleNote(path, excludedFolders),
         report: (error) => errors.push(error),
         write: async (path, intent, expected) =>
         {
@@ -173,7 +175,9 @@ test('complete undo produces no write and no increment', async () =>
 
 test('excluded folders are not tracked, while the vault root is', async () =>
 {
-    const f = fixture();
+    const f = fixture({
+        excludedFolders: ['archives', 'scripts', 'libraries', 'templates', 'inbound'],
+    });
     for (const folder of ['archives', 'scripts', 'libraries', 'templates', 'inbound'])
         f.tracker.change(`${folder}/A.md`, 'old', 'new');
     assert.equal(f.tracker.paths().length, 0);
@@ -182,6 +186,23 @@ test('excluded folders are not tracked, while the vault root is', async () =>
     f.leave();
     await f.tracker.finish('Root.md');
     assert.equal(properties(f.files.get('Root.md')).updated_count, 1);
+});
+
+test('fresh defaults track notes in all formerly prefilled folders', async () =>
+{
+    const f = fixture();
+    f.leave();
+    const paths = ['archives', 'scripts', 'libraries', 'templates', 'inbound'].map(folder =>
+        `${folder}/A.md`
+    );
+    for (const path of paths) {
+        f.edit(note('changed'), path);
+        await f.tracker.finish(path);
+        assert.equal(properties(f.files.get(path)).updated_count, 1);
+    }
+    assert.deepEqual(f.writes, paths);
+    assert.deepEqual(f.errors, []);
+    assert.equal(eligibleNote('scripts/non-markdown.js'), false);
 });
 
 test('restart recovers a checkpointed session, without scanning or counting unchanged notes', async () =>
@@ -364,7 +385,7 @@ test('timestamp advances only when older than mtime; equal/newer timestamps reta
 
 test('moving a folder into an exclusion removes its baselines and sessions without breaking the next load', async () =>
 {
-    const f = fixture();
+    const f = fixture({ excludedFolders: ['archives'] });
     await f.tracker.observe('notes/A.md', f.files.get('notes/A.md'), 1000);
     f.edit(note('changed', initial));
     await f.tracker.checkpoint();

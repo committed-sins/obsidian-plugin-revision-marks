@@ -16,7 +16,7 @@ Update timestamps and optional revision counts at the end of a meaningful editin
 
 Not yet listed in the Community Plugins directory. Until approved:
 
-1. Download `main.js`, `manifest.json` and `styles.css` from the [beta release](https://github.com/committed-sins/obsidian-plugin-revision-marks/releases/tag/0.1.7).
+1. Download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/committed-sins/obsidian-plugin-revision-marks/releases/latest).
 2. Place them in `<vault>/.obsidian/plugins/revision-marks/`.
 3. Reload Obsidian and enable **Revision Marks** in Community plugins.
 
@@ -26,7 +26,7 @@ Disable other automatic writers of these properties first. Existing notes are no
 
 **Revision tracking:** Counter is the default; Off updates timestamps only and leaves existing revision values untouched. Property names are configurable, including `updated_count` for an existing counter. Save and apply completes pending sessions under the old settings first.
 
-The default excluded root folders are `archives`, `scripts`, `libraries`, `templates` and `inbound`. Notes at the vault root remain eligible.
+No folders are excluded by default. Add your own vault-relative folders if needed; each entry excludes its subfolders too. Existing saved exclusions are preserved on update.
 
 **Complete current session**, **Complete all sessions** and explicit **Save current file / Ctrl+S** finish changed sessions. Autosave alone does not.
 

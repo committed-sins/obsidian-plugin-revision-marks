@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.8 — Beta
+
+- Start new installations with an empty excluded-folders list instead of personal vault conventions.
+- Preserve every existing saved exclusion list and the ability to configure root folders and their descendants.
+- Verify both the empty new-install UI/runtime and unchanged loading of existing settings.
+
 ## 0.1.7 — Beta
 
 - Prepare the first installable beta with MIT licensing and visible beta identification.
