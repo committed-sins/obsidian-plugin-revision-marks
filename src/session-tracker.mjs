@@ -20,11 +20,28 @@ export function createSessionTracker({
 {
     const sessions = new Map();
     const baselines = new Map();
+    // References survive a rename even while hashing or reading is suspended.
+    const locations = new Map();
+    const locationOf = (path) =>
+    {
+        if (!locations.has(path)) locations.set(path, { path });
+        return locations.get(path);
+    };
+    const current = (location) => locations.get(location.path) === location;
     let queue = Promise.resolve();
     let available = true;
     const save = () =>
     {
-        const entries = [...sessions.values()].map((session) => session.record).filter(Boolean);
+        const entries = [...sessions].flatMap(([path, session]) =>
+        {
+            if (!session.record && !session.renamedAt) return [];
+            return [{
+                ...(session.record ?? { renameOnly: true }),
+                path,
+                renamedAt: session.renamedAt,
+                renameVersion: session.renameVersion,
+            }];
+        });
         storage.setItem(storageKey, JSON.stringify({ version: 1, entries }));
     };
     let baselineDirty = false;
@@ -56,18 +73,29 @@ export function createSessionTracker({
             for (const record of journal.entries) {
                 if (
                     typeof record.path !== 'string' ||
-                    !/^[a-f0-9]{64}$/.test(record.baselineHash) ||
-                    !/^[a-f0-9]{64}$/.test(record.latestHash) ||
-                    !Number.isFinite(Date.parse(record.editedAt)) ||
-                    !record.initial ||
-                    !Number.isSafeInteger(record.initial.count) ||
-                    record.initial.count < 0
+                    (!record.renameOnly && (
+                        !/^[a-f0-9]{64}$/.test(record.baselineHash) ||
+                        !/^[a-f0-9]{64}$/.test(record.latestHash) ||
+                        !Number.isFinite(Date.parse(record.editedAt)) ||
+                        !record.initial ||
+                        !Number.isSafeInteger(record.initial.count) ||
+                        record.initial.count < 0
+                    )) ||
+                    (record.renamedAt !== undefined &&
+                        (!Number.isFinite(Date.parse(record.renamedAt)) ||
+                            !Number.isSafeInteger(record.renameVersion) ||
+                            record.renameVersion < 1)) ||
+                    (record.renameOnly && !record.renamedAt)
                 ) {
                     throw new Error('Invalid session journal entry');
                 }
                 if (!isEligible(record.path)) continue;
                 record.comparisonVersion ??= 1;
-                sessions.set(record.path, { record });
+                sessions.set(record.path, {
+                    record: record.renameOnly ? undefined : record,
+                    renamedAt: record.renamedAt,
+                    renameVersion: record.renameVersion,
+                });
             }
         }
         const rawBaselines = storage.getItem(storageKey + ':baselines');
@@ -140,10 +168,14 @@ export function createSessionTracker({
             saveBaselines();
         });
     const observe = (path, text, mtime) =>
-        enqueue(async () =>
+    {
+        const location = locationOf(path);
+        return enqueue(async () =>
         {
             if (!available || !eligible(path)) return;
             const contentHash = await hash(comparableContent(text, api));
+            if (!current(location) || !eligible(location.path)) return;
+            path = location.path;
             const metadata = metadataOf(text, api);
             const previous = baselines.get(path);
             const session = sessions.get(path);
@@ -159,13 +191,13 @@ export function createSessionTracker({
             ) {
                 // Metadata-only changes and already-stamped sync changes do not create another edit.
                 remember(path, contentHash, metadata, mtime);
-                if (session?.record?.source === 'file') {
+                if (session?.record?.source === 'file' && !session.renamedAt) {
                     sessions.delete(path);
                     save();
                 }
                 return;
             }
-            if (session?.before !== undefined) return; // Preserve the editor's exact before/after documents.
+            if (session?.before !== undefined || session?.renamedAt) return; // Preserve the editor's exact before/after documents.
             const editedAt = new Date(mtime).toISOString();
             sessions.set(path, {
                 record: {
@@ -180,35 +212,58 @@ export function createSessionTracker({
             });
             save();
         });
+    };
     const finish = (path, { force = false, shutdown = false } = {}) =>
-        enqueue(async () =>
+    {
+        const location = locationOf(path);
+        return enqueue(async () =>
         {
+            if (!current(location)) return;
+            path = location.path;
             if (!available || (!force && isActive(path))) return;
             const session = sessions.get(path);
             if (!session) return;
             await snapshot(session, path);
             const revision = session.revision;
             const canWrite = () =>
+                current(location) && location.path === path &&
                 sessions.get(path) === session &&
                 session.revision === revision &&
                 (force || !isActive(path));
-            const record = session.record;
-            if (!record || !eligible(path) || !exists(path)) {
+            if (!canWrite()) return;
+            let record = session.record;
+            if ((!record && !session.renamedAt) || !eligible(path) || !exists(path)) {
                 sessions.delete(path);
                 save();
                 return;
             }
-            const loaded = await read(path, { saveEditors: record.source !== 'file', shutdown });
+            const loaded = await read(path, { saveEditors: record?.source !== 'file', shutdown });
             const text = typeof loaded === 'string' ? loaded : loaded.text;
             const mtime = typeof loaded === 'string' ? undefined : loaded.mtime;
             if (!canWrite()) {
                 save();
                 return;
             }
+            if (!record) {
+                const contentHash = await hash(comparableContent(text, api));
+                if (!canWrite()) return;
+                const previous = baselines.get(path);
+                record = session.record = {
+                    path,
+                    baselineHash: previous?.hash ?? contentHash,
+                    latestHash: contentHash,
+                    initial: previous ?
+                        { count: previous.count, updated: previous.updated } :
+                        metadataOf(text, api),
+                    editedAt: session.renamedAt,
+                    comparisonVersion: 2,
+                };
+            }
             const contentHash = await hash(comparableContent(text, api, record.comparisonVersion));
             const canonicalHash = record.comparisonVersion === 2 ?
                 contentHash :
                 await hash(comparableContent(text, api));
+            if (!canWrite()) return;
             const metadata = metadataOf(text, api);
             if (
                 record.intent &&
@@ -221,18 +276,31 @@ export function createSessionTracker({
                     canonicalHash === record.intent.postCommitHash ||
                     (!record.intent.postCommitHash && contentHash === record.latestHash)
                 ) {
-                    remember(path, canonicalHash, metadata, mtime);
-                    sessions.delete(path);
-                    save();
-                    saveBaselines();
-                    return; // Commit succeeded before interruption.
+                    if (
+                        session.renameVersion !== record.intent.renameVersion &&
+                        session.renamedAt
+                    ) {
+                        record.baselineHash = canonicalHash;
+                        record.initial = metadata;
+                        delete record.intent;
+                    } else {
+                        remember(path, canonicalHash, metadata, mtime);
+                        sessions.delete(path);
+                        save();
+                        saveBaselines();
+                        return; // Commit succeeded before interruption.
+                    }
                 }
                 // The old commit succeeded, followed by another unstamped content change.
-                record.baselineHash = record.intent.postCommitHash ?? record.latestHash;
-                record.initial = metadata;
-                delete record.intent;
+                if (record.intent) {
+                    record.baselineHash = record.intent.postCommitHash ?? record.latestHash;
+                    record.initial = metadata;
+                    if (session.renameVersion === record.intent.renameVersion)
+                        delete session.renamedAt;
+                    delete record.intent;
+                }
             }
-            if (contentHash === record.baselineHash) {
+            if (contentHash === record.baselineHash && !session.renamedAt) {
                 remember(path, canonicalHash, metadata, mtime);
                 sessions.delete(path);
                 save();
@@ -256,9 +324,11 @@ export function createSessionTracker({
                 );
             }
             record.latestHash = contentHash;
-            const editedAt = Number.isFinite(mtime) && mtime > 0 ?
-                new Date(mtime).toISOString() :
-                record.editedAt;
+            const contentTime = Number.isFinite(mtime) && mtime > 0 ?
+                mtime :
+                Date.parse(record.editedAt);
+            const editedAt = new Date(Math.max(contentTime, Date.parse(session.renamedAt) || 0))
+                .toISOString();
             const proposed = record.intent?.updated ?? api.formatDate(editedAt);
             const existingTime = typeof metadata.updated === 'string' ?
                 Date.parse(metadata.updated) :
@@ -271,6 +341,7 @@ export function createSessionTracker({
                 count: revisionEnabled(api) ? (record.intent?.count ?? metadata.count + 1) : 0,
                 updated: updateTimestamp ? proposed : metadata.updated,
                 updateTimestamp,
+                renameVersion: session.renameVersion,
             };
             record.intent.addCreated = !metadata.hasCreated;
             record.intent.created = metadata.hasCreated ? metadata.created : record.intent.updated;
@@ -291,12 +362,16 @@ export function createSessionTracker({
                 shutdown,
                 comparisonVersion: record.comparisonVersion,
             });
-            remember(path, record.intent.postCommitHash, record.intent, mtime);
-            if (session.revision === revision) sessions.delete(path);
+            // A host write can finish after another rename. Keep its canonical location.
+            const committedPath = location.path;
+            if (!current(location)) return;
+            remember(committedPath, record.intent.postCommitHash, record.intent, mtime);
+            if (session.renameVersion === record.intent.renameVersion) delete session.renamedAt;
+            if (session.revision === revision) sessions.delete(committedPath);
             else {
                 // Input after the write belongs to a fresh session, not to the just-committed one.
                 session.record = {
-                    path,
+                    path: committedPath,
                     baselineHash: record.intent.postCommitHash,
                     latestHash: record.intent.postCommitHash,
                     initial: { count: record.intent.count, updated: record.intent.updated },
@@ -308,13 +383,20 @@ export function createSessionTracker({
             save();
             saveBaselines();
         });
-    const rename = (oldPath, newPath) =>
+    };
+    const rename = (oldPath, newPath, { countRevision = false } = {}) =>
     {
         if (oldPath === newPath) return queue;
-        for (const path of new Set([...baselines.keys(), ...sessions.keys()])) {
+        for (
+            const path of new Set([...locations.keys(), ...baselines.keys(), ...sessions.keys()])
+        ) {
             if (path !== oldPath && !path.startsWith(oldPath + '/')) continue;
             const target = newPath + path.slice(oldPath.length);
+            const location = locationOf(path);
+            locations.delete(path);
             if (eligible(target)) {
+                location.path = target;
+                locations.set(target, location);
                 if (baselines.has(path)) baselines.set(target, baselines.get(path));
                 if (sessions.has(path)) {
                     const session = sessions.get(path);
@@ -326,6 +408,16 @@ export function createSessionTracker({
             sessions.delete(path);
             baselineDirty = true;
         }
+        if (
+            available && countRevision && revisionEnabled(api) && eligible(oldPath) &&
+            eligible(newPath)
+        ) {
+            const session = sessions.get(newPath) ?? {};
+            session.renamedAt = now().toISOString();
+            session.renameVersion = (session.renameVersion ?? 0) + 1;
+            session.revision = (session.revision ?? 0) + 1;
+            sessions.set(newPath, session);
+        }
         return enqueue(async () =>
         {
             if (available) {
@@ -336,8 +428,15 @@ export function createSessionTracker({
     };
     const remove = (path) =>
     {
-        for (const candidate of new Set([...baselines.keys(), ...sessions.keys()])) {
+        for (
+            const candidate of new Set([
+                ...locations.keys(),
+                ...baselines.keys(),
+                ...sessions.keys(),
+            ])
+        ) {
             if (candidate === path || candidate.startsWith(path + '/')) {
+                locations.delete(candidate);
                 baselines.delete(candidate);
                 sessions.delete(candidate);
                 baselineDirty = true;

@@ -215,7 +215,19 @@ export function startEditSessions(app, api)
         app.vault,
         app.vault.on('rename', (file, oldPath) =>
         {
-            void tracker.rename(oldPath, file.path);
+            for (const paths of [completionRequests, recoveringPaths]) {
+                for (const path of [...paths]) {
+                    if (path === oldPath || path.startsWith(oldPath + '/')) {
+                        paths.delete(path);
+                        paths.add(file.path + path.slice(oldPath.length));
+                    }
+                }
+            }
+            void tracker.rename(oldPath, file.path, {
+                countRevision: api.countRenames === true && file.extension === 'md',
+            });
+            if (file.extension === 'md') void observeFile(file);
+            scheduleInactiveCompletion();
         }),
     ]);
     refs.push([

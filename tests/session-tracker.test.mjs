@@ -464,3 +464,235 @@ test('invalid YAML/count and an unreadable journal never cause destructive repla
     await recovered.checkpoint();
     assert.equal(f.storageData.get('test'), 'broken-json');
 });
+
+function moveFile(f, oldPath = 'notes/A.md', newPath = 'notes/Renamed.md')
+{
+    f.files.set(newPath, f.files.get(oldPath));
+    f.files.delete(oldPath);
+}
+
+function gate()
+{
+    let release, entered;
+    const blocked = new Promise((resolve) =>
+    {
+        release = resolve;
+    });
+    const started = new Promise((resolve) =>
+    {
+        entered = resolve;
+    });
+    return { blocked, started, release: () => release(), entered: () => entered() };
+}
+
+test('rename during checkpoint hashing persists the new path and recovers the edit exactly once', async () =>
+{
+    const f = fixture(), pause = gate();
+    const tracker = createSessionTracker({
+        ...f.options,
+        hash: async (text) =>
+        {
+            pause.entered();
+            await pause.blocked;
+            return hash(text);
+        },
+    });
+    const after = note('edited then renamed', initial);
+    tracker.change('notes/A.md', f.files.get('notes/A.md'), after);
+    f.files.set('notes/A.md', after);
+    const checkpoint = tracker.checkpoint();
+    await pause.started;
+    moveFile(f);
+    const renamed = tracker.rename('notes/A.md', 'notes/Renamed.md');
+    pause.release();
+    await Promise.all([checkpoint, renamed]);
+    assert.deepEqual(JSON.parse(f.storageData.get('test')).entries.map((e) => e.path), [
+        'notes/Renamed.md',
+    ]);
+    const recovered = createSessionTracker(f.options);
+    await recovered.finish('notes/Renamed.md', { force: true });
+    await recovered.finish('notes/Renamed.md', { force: true });
+    assert.equal(properties(f.files.get('notes/Renamed.md')).updated_count, 8);
+    assert.equal(bodyOf(f.files.get('notes/Renamed.md')), 'edited then renamed');
+    assert.deepEqual(f.writes, ['notes/Renamed.md']);
+    assert.deepEqual(f.errors, []);
+});
+
+test('rename during observation hashing follows the location without resurrecting the old path', async () =>
+{
+    const f = fixture(), pause = gate();
+    await f.tracker.observe('notes/A.md', f.files.get('notes/A.md'), 1);
+    await f.tracker.checkpoint();
+    const tracker = createSessionTracker({
+        ...f.options,
+        hash: async (text) =>
+        {
+            pause.entered();
+            await pause.blocked;
+            return hash(text);
+        },
+    });
+    const after = note('external edit', initial);
+    f.files.set('notes/A.md', after);
+    const observing = tracker.observe('notes/A.md', after, 1794398400000);
+    await pause.started;
+    moveFile(f);
+    const renamed = tracker.rename('notes/A.md', 'notes/Renamed.md');
+    pause.release();
+    await Promise.all([observing, renamed]);
+    assert.deepEqual(tracker.knownPaths(), ['notes/Renamed.md']);
+    await tracker.finish('notes/Renamed.md', { force: true });
+    assert.equal(properties(f.files.get('notes/Renamed.md')).updated_count, 8);
+    assert.deepEqual(f.errors, []);
+});
+
+test('rename while completion reads defers the old path and preserves recovery', async () =>
+{
+    const f = fixture(), pause = gate();
+    const tracker = createSessionTracker({
+        ...f.options,
+        read: async (path) =>
+        {
+            const text = f.files.get(path);
+            pause.entered();
+            await pause.blocked;
+            return text;
+        },
+    });
+    const after = note('keep body', initial);
+    tracker.change('notes/A.md', f.files.get('notes/A.md'), after);
+    f.files.set('notes/A.md', after);
+    const finishing = tracker.finish('notes/A.md', { force: true });
+    await pause.started;
+    moveFile(f);
+    const renamed = tracker.rename('notes/A.md', 'notes/Renamed.md');
+    pause.release();
+    await Promise.all([finishing, renamed]);
+    assert.deepEqual(f.writes, []);
+    const recovered = createSessionTracker(f.options);
+    await recovered.finish('notes/Renamed.md', { force: true });
+    assert.equal(properties(f.files.get('notes/Renamed.md')).updated_count, 8);
+});
+
+test('pure rename is opt-in; enabled rename survives restart without a baseline or duplicate increment', async () =>
+{
+    for (const countRevision of [false, true]) {
+        const f = fixture();
+        moveFile(f);
+        await f.tracker.rename('notes/A.md', 'notes/Renamed.md', { countRevision });
+        const recovered = createSessionTracker(f.options);
+        await recovered.finish('notes/Renamed.md', { force: true });
+        const again = createSessionTracker(f.options);
+        await again.finish('notes/Renamed.md', { force: true });
+        assert.equal(
+            properties(f.files.get('notes/Renamed.md')).updated_count,
+            countRevision ? 8 : 7,
+        );
+        assert.equal(f.writes.length, countRevision ? 1 : 0);
+        assert.equal(bodyOf(f.files.get('notes/Renamed.md')), 'before');
+        assert.deepEqual(f.errors, []);
+    }
+});
+
+test('content edit and counted rename share one session, including interrupted-commit recovery', async () =>
+{
+    const f = fixture();
+    f.edit(note('edited and renamed', initial));
+    moveFile(f);
+    await f.tracker.rename('notes/A.md', 'notes/Renamed.md', { countRevision: true });
+    f.failAfterWrite();
+    await f.tracker.finish('notes/Renamed.md', { force: true });
+    assert.equal(f.errors.length, 1);
+    const recovered = createSessionTracker(f.options);
+    await recovered.finish('notes/Renamed.md', { force: true });
+    assert.equal(properties(f.files.get('notes/Renamed.md')).updated_count, 8);
+    assert.equal(f.writes.length, 1);
+    assert.deepEqual(recovered.paths(), []);
+});
+
+test('counted rename retains its marker across unchanged file observations and repeated renames', async () =>
+{
+    const f = fixture();
+    await f.tracker.observe('notes/A.md', f.files.get('notes/A.md'), 1);
+    moveFile(f);
+    await f.tracker.rename('notes/A.md', 'notes/Renamed.md', { countRevision: true });
+    await f.tracker.observe('notes/Renamed.md', f.files.get('notes/Renamed.md'), 1);
+    moveFile(f, 'notes/Renamed.md', 'notes/Again.md');
+    await f.tracker.rename('notes/Renamed.md', 'notes/Again.md', { countRevision: true });
+    await f.tracker.finish('notes/Again.md', { force: true });
+    assert.equal(properties(f.files.get('notes/Again.md')).updated_count, 8);
+    assert.equal(f.writes.length, 1);
+    assert.deepEqual(f.errors, []);
+});
+
+test('rename during a completed host write keeps the committed baseline at the new location', async () =>
+{
+    const f = fixture(), pause = gate();
+    const tracker = createSessionTracker({
+        ...f.options,
+        write: async (...args) =>
+        {
+            await f.options.write(...args);
+            pause.entered();
+            await pause.blocked;
+        },
+    });
+    const after = note('body survives write race', initial);
+    tracker.change('notes/A.md', f.files.get('notes/A.md'), after);
+    f.files.set('notes/A.md', after);
+    const finishing = tracker.finish('notes/A.md', { force: true });
+    await pause.started;
+    moveFile(f);
+    const renamed = tracker.rename('notes/A.md', 'notes/Renamed.md');
+    pause.release();
+    await Promise.all([finishing, renamed]);
+    assert.deepEqual(tracker.knownPaths(), ['notes/Renamed.md']);
+    assert.deepEqual(tracker.paths(), []);
+    const recovered = createSessionTracker(f.options);
+    await recovered.observe('notes/Renamed.md', f.files.get('notes/Renamed.md'), 1);
+    await recovered.finish('notes/Renamed.md', { force: true });
+    assert.equal(f.writes.length, 1);
+    assert.equal(properties(f.files.get('notes/Renamed.md')).updated_count, 8);
+});
+
+test('a new rename after an interrupted committed rename is counted once separately', async () =>
+{
+    const f = fixture();
+    moveFile(f);
+    await f.tracker.rename('notes/A.md', 'notes/Renamed.md', { countRevision: true });
+    f.failAfterWrite();
+    await f.tracker.finish('notes/Renamed.md', { force: true });
+    moveFile(f, 'notes/Renamed.md', 'notes/Again.md');
+    await f.tracker.rename('notes/Renamed.md', 'notes/Again.md', { countRevision: true });
+    const recovered = createSessionTracker({
+        ...f.options,
+        write: async (path, intent, expected) =>
+        {
+            try {
+                await f.options.write(path, intent, expected);
+            } catch (error) {
+                if (!error.message.includes('simulated interruption')) throw error;
+            }
+        },
+    });
+    await recovered.finish('notes/Again.md', { force: true });
+    const again = createSessionTracker(f.options);
+    await again.finish('notes/Again.md', { force: true });
+    assert.equal(properties(f.files.get('notes/Again.md')).updated_count, 9);
+    assert.equal(f.writes.length, 2);
+    assert.deepEqual(again.paths(), []);
+});
+
+test('counted renames respect exclusions and disabled revision mode', async () =>
+{
+    const f = fixture({ excludedFolders: ['archives'] });
+    moveFile(f, 'notes/A.md', 'archives/A.md');
+    await f.tracker.rename('notes/A.md', 'archives/A.md', { countRevision: true });
+    assert.deepEqual(f.tracker.paths(), []);
+    const off = createSessionTracker({ ...f.options, api: { ...api, revisionMode: 'off' } });
+    moveFile(f, 'archives/A.md', 'notes/A.md');
+    moveFile(f);
+    await off.rename('notes/A.md', 'notes/Renamed.md', { countRevision: true });
+    await off.finish('notes/Renamed.md', { force: true });
+    assert.equal(f.writes.length, 0);
+});

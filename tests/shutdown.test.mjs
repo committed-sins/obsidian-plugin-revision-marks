@@ -77,7 +77,7 @@ async function fixture(run)
         })
     )
         Object.defineProperty(globalThis, key, { configurable: true, value });
-    const file = { path: 'notes/synthetic.md', stat: { mtime: 1730000000000 } };
+    const file = { extension: 'md', path: 'notes/synthetic.md', stat: { mtime: 1730000000000 } };
     let disk = note('before'),
         buffer = disk,
         modeData = disk,
@@ -770,4 +770,50 @@ test('desktop quit completes multiple native-saved notes, including Properties c
         assert.ok(otherDisk.endsWith('other body'));
         assert.equal(f.saves(), 1);
     });
+});
+
+test('edit then rename then immediate quit recovers at the new path and counts once', async () =>
+{
+    for (const mobile of [true, false]) {
+        await fixture(async (f) =>
+        {
+            f.api.Platform.isMobile = mobile;
+            f.edit();
+            await f.view.save();
+            const file = f.view.file, oldPath = file.path;
+            file.path = 'notes/renamed.md';
+            f.callbacks.get('vault:rename')(file, oldPath);
+            const tasks = new QuitTasks();
+            f.callbacks.get('workspace:quit')(tasks);
+            await tasks.promise();
+            await f.end();
+            f.start();
+            await f.complete();
+            assert.equal(JSON.parse(info(f.disk()).frontmatter).revision, 2);
+            assert.ok(f.disk().endsWith('edited body must survive'));
+            assert.equal(f.writes(), 1);
+            assert.deepEqual(f.pending(), []);
+        });
+    }
+});
+
+test('runtime counts file renames only when enabled and never counts folder renames', async () =>
+{
+    for (const enabled of [false, true]) {
+        await fixture(async (f) =>
+        {
+            await f.end();
+            f.api.countRenames = enabled;
+            f.start();
+            const file = f.view.file, oldPath = file.path;
+            file.path = 'notes/renamed.md';
+            f.callbacks.get('vault:rename')(file, oldPath);
+            await f.complete();
+            assert.equal(f.writes(), enabled ? 1 : 0);
+            file.path = 'moved/renamed.md';
+            f.callbacks.get('vault:rename')({ path: 'moved' }, 'notes');
+            await f.complete();
+            assert.equal(f.writes(), enabled ? 1 : 0);
+        });
+    }
 });

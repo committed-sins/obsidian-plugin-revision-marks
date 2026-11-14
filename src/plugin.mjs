@@ -104,6 +104,7 @@ export default class RevisionMarksPlugin extends Plugin
                 excludedFolders: this.settings.excludedFolders,
                 properties: this.settings.properties,
                 revisionMode: this.settings.revisionMode,
+                countRenames: this.settings.countRenames,
                 formatDate: (iso) => moment(iso).format('YYYY-MM-DDTHH:mm:ssZ'),
             });
         });

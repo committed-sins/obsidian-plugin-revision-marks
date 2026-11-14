@@ -211,6 +211,9 @@ test('invalid settings fail without starting or overwriting recovery state', asy
         revision: 'revision',
     });
     assert.equal(normalizeSettings().revisionMode, 'counter');
+    assert.equal(normalizeSettings().countRenames, false);
+    assert.equal(normalizeSettings({ countRenames: true }).countRenames, true);
+    assert.throws(() => normalizeSettings({ countRenames: 'true' }), /boolean/);
     assert.equal(normalizeSettings({ revisionMode: 'off' }).revisionMode, 'off');
     assert.throws(() => normalizeSettings({ revisionMode: 'semver' }), /Revision mode/);
     assert.throws(() => normalizeSettings({ properties: { created: '' } }), /non-empty/);
@@ -278,6 +281,10 @@ test('revision dropdown defaults to Counter and applies Off with a disabled prop
             fn(control);
             return this;
         }
+        addToggle(fn)
+        {
+            return this.control(fn);
+        }
         addDropdown(fn)
         {
             return this.control(fn);
@@ -327,15 +334,21 @@ test('revision dropdown defaults to Counter and applies Off with a disabled prop
         'created',
         'redrawing discards unsaved edits',
     );
+    const rename = controls.get('Count file renames as revisions');
+    assert.equal(rename.value, false);
+    rename.change(true);
     const mode = controls.get('Mode'),
         name = controls.get('Revision property');
     assert.equal(mode.value, 'counter');
     assert.deepEqual(mode.options, { off: 'Off', counter: 'Counter' });
     mode.change('off');
     assert.equal(name.disabled, true);
+    assert.equal(rename.disabled, true);
     assert.equal(f.plugin.settings.revisionMode, 'counter');
     await controls.get('Apply settings').click();
     assert.equal(f.plugin.settings.revisionMode, 'off');
+    assert.equal(f.plugin.settings.countRenames, true);
+    assert.equal(f.events.at(-1)[1].countRenames, true);
     assert.equal(f.events.at(-1)[1].revisionMode, 'off');
     await f.plugin.onunload();
 });

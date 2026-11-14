@@ -71,3 +71,10 @@ Static tests do not establish live desktop/mobile event behavior. No runtime dep
 - Define conflict visibility and recovery commands before exposing unresolved journal entries to general users.
 - Establish supported Obsidian versions and acceptable mobile startup overhead.
 - Design completion actions only after the core is stable; a generic action system is not part of the initial extraction.
+
+
+## File renames
+
+Sessions and baselines move synchronously with vault rename events. In-flight observations retain a location reference; journal serialization takes the current map key, so an older hash result cannot restore the previous path. Completion rechecks the location after asynchronous reads and hashes before writing metadata.
+
+Optional rename counting records a small pending marker (path, event time and generation) even before a content baseline exists. It contains no note text. The write-ahead intent includes that generation, allowing recovery to distinguish an already applied rename from a later rename. File renames and moves join the editing session; folder renames relocate existing work without creating revisions.

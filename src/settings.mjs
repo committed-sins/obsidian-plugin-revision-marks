@@ -3,6 +3,7 @@ import { DEFAULT_PROPERTIES, normalizeProperties } from './properties.mjs';
 
 export const DEFAULT_SETTINGS = Object.freeze({
     revisionMode: 'counter',
+    countRenames: false,
     excludedFolders: DEFAULT_EXCLUDED_FOLDERS,
     properties: DEFAULT_PROPERTIES,
 });
@@ -34,5 +35,12 @@ export function normalizeSettings(value = {})
     const revisionMode = value.revisionMode ?? DEFAULT_SETTINGS.revisionMode;
     if (!['off', 'counter'].includes(revisionMode))
         throw new Error('Revision mode must be off or counter.');
-    return { excludedFolders: [...new Set(excludedFolders)], properties, revisionMode };
+    const countRenames = value.countRenames ?? DEFAULT_SETTINGS.countRenames;
+    if (typeof countRenames !== 'boolean') throw new Error('Count file renames must be a boolean.');
+    return {
+        countRenames,
+        excludedFolders: [...new Set(excludedFolders)],
+        properties,
+        revisionMode,
+    };
 }

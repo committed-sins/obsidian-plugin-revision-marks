@@ -8,6 +8,7 @@ export class RevisionMarksSettingsTab extends PluginSettingTab
 {
     draft = null;
     revisionNameInput = null;
+    renameToggle = null;
 
     display()
     {
@@ -17,8 +18,10 @@ export class RevisionMarksSettingsTab extends PluginSettingTab
             excludedFolders: [...this.plugin.settings.excludedFolders],
             properties: { ...this.plugin.settings.properties },
             revisionMode: this.plugin.settings.revisionMode,
+            countRenames: this.plugin.settings.countRenames,
         };
         this.revisionNameInput = null;
+        this.renameToggle = null;
 
         this.renderIntroduction();
         this.renderTimestampSettings();
@@ -56,6 +59,25 @@ export class RevisionMarksSettingsTab extends PluginSettingTab
         group.addSetting((setting) =>
             this.renderPropertyName(setting, 'revision', 'Revision property')
         );
+        group.addSetting((setting) => this.renderRenameSetting(setting));
+    }
+
+    renderRenameSetting(setting)
+    {
+        setting.setName('Count file renames as revisions');
+        setting.setDesc(
+            'Includes file renames and moves in the editing session. Folder renames do not create revisions.',
+        );
+        setting.addToggle((toggle) =>
+        {
+            this.renameToggle = toggle;
+            toggle.setValue(this.draft.countRenames);
+            toggle.setDisabled(this.draft.revisionMode === 'off');
+            toggle.onChange((value) =>
+            {
+                this.draft.countRenames = value;
+            });
+        });
     }
 
     renderRevisionMode(setting)
@@ -73,6 +95,7 @@ export class RevisionMarksSettingsTab extends PluginSettingTab
             {
                 this.draft.revisionMode = value;
                 this.revisionNameInput?.setDisabled(value === 'off');
+                this.renameToggle?.setDisabled(value === 'off');
             });
         });
     }
