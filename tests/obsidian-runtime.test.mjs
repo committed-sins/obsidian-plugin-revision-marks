@@ -370,7 +370,7 @@ test('save command and Bases/properties complete sessions; quit and Android back
         edit('after counter');
         command.checkCallback(false);
         await wait(60);
-        assert.equal(fm().updated_count, 1);
+        assert.equal(fm().updated_count, 0);
         assert.deepEqual(Object.keys(fm()), [
             'id',
             'created',
@@ -409,7 +409,7 @@ test('save command and Bases/properties complete sessions; quit and Android back
         command.checkCallback(false);
         await wait(60);
         assert.equal(fm().born, fm().touched);
-        assert.equal(fm().updated_revision, 1);
+        assert.equal(fm().updated_revision, 0);
         assert.equal(
             fm().updated_count,
             40,

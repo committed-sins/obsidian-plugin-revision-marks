@@ -105,6 +105,8 @@ export default class RevisionMarksPlugin extends Plugin
                 properties: this.settings.properties,
                 revisionMode: this.settings.revisionMode,
                 countRenames: this.settings.countRenames,
+                countLinkUpdates: this.settings.countLinkUpdates,
+                initialRevision: this.settings.initialRevision,
                 formatDate: (iso) => moment(iso).format('YYYY-MM-DDTHH:mm:ssZ'),
             });
         });
@@ -121,7 +123,9 @@ export default class RevisionMarksPlugin extends Plugin
         const namesChanged =
             JSON.stringify(settings.properties) !== JSON.stringify(this.settings.properties);
         const modeChanged = settings.revisionMode !== this.settings.revisionMode;
-        return namesChanged || modeChanged;
+        return namesChanged || modeChanged ||
+            settings.initialRevision !== this.settings.initialRevision ||
+            settings.countLinkUpdates !== this.settings.countLinkUpdates;
     }
 
     async applySettings(value)
@@ -139,7 +143,7 @@ export default class RevisionMarksPlugin extends Plugin
             const hasPendingSessions = previous?.pendingPaths().length > 0;
             if (hasPendingSessions && this.hasTrackingRuleChanges(settings)) {
                 throw new Error(
-                    'Pending sessions remain under the old property names or revision mode. ' +
+                    'Pending sessions remain under the old tracking rules. ' +
                         'Complete them before changing these settings.',
                 );
             }

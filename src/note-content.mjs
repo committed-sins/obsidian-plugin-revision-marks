@@ -78,6 +78,7 @@ export function metadataOf(text, api)
         throw new Error(`${names.revision} must be a non-negative integer`);
     return {
         count,
+        hasRevision: Object.hasOwn(fm, names.revision),
         updated: fm[names.updated] instanceof Date ?
             fm[names.updated].toISOString() :
             (fm[names.updated] ?? null),

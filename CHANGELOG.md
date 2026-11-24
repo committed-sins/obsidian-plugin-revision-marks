@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.10 - Beta
+
+- Complete saved, changed sessions when switching from editing to reading view. Properties edits in reading view are still tracked; an open source view of the same active note keeps the session open.
+- Start newly created notes at revision 0 by default. The first subsequent content edit becomes 1, including edits before the initial metadata write. Initialize only at safe session boundaries; preserve existing counters and allow a custom starting value.
+- Count file renames and moves as revisions by default, with a separate option to disable this. Folder renames relocate pending work without directly incrementing the contained notes.
+- By default, confirmed automatic link rewrites update `updated` without changing or inserting `revision`. Enable automatic-link counting to count them too. Additional genuine edits and uncertain attribution remain counted normally.
+- Preserve explicitly saved settings. The new defaults apply only to unset options; no bulk migration or counter reset is performed.
+- Extend journal/recovery guards for initialization, timestamp-only link sessions, duplicate events and genuine edits arriving during retries. Validate formatting, build and all 103 automated tests.
+- Keep additional revision formats, including semantic versions, on the roadmap for a later release.
+
 ## 0.1.9 - Beta
 
 - Defer unrendered Templater frontmatter without parsing or modifying template source files.

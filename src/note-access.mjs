@@ -39,8 +39,10 @@ export function createNoteAccess({ app, api, fileAt, viewsFor, writing, assertRu
                 unsettled ||
                 detached ||
                 !hasViewData ||
-                compare(view.getViewData()) !== compare(disk) ||
-                compare(view.editor.getValue()) !== compare(disk)
+                (view.getMode?.() !== 'preview' && (
+                    compare(view.getViewData()) !== compare(disk) ||
+                    compare(view.editor.getValue()) !== compare(disk)
+                ))
             ) {
                 throw deferred(
                     `${path} has unsaved, detached or stale view content; completion deferred`,
@@ -64,7 +66,11 @@ export function createNoteAccess({ app, api, fileAt, viewsFor, writing, assertRu
         const updated = frontmatter[names.updated] instanceof Date ?
             frontmatter[names.updated].toISOString() :
             (frontmatter[names.updated] ?? null);
-        if (count !== expected.count || updated !== expected.updated) {
+        if (
+            count !== expected.count || updated !== expected.updated ||
+            (expected.hasRevision !== undefined &&
+                Object.hasOwn(frontmatter, names.revision) !== expected.hasRevision)
+        ) {
             throw new Error(`${path} metadata changed concurrently`);
         }
 
@@ -112,8 +118,14 @@ export function createNoteAccess({ app, api, fileAt, viewsFor, writing, assertRu
                         frontmatter[names.updated] :
                         intent.updated,
                 };
-                if (revisionEnabled(api)) values[names.revision] = intent.count;
-                addSessionProperties(frontmatter, values, names, api.revisionMode);
+                if (revisionEnabled(api) && !intent.preserveRevision)
+                    values[names.revision] = intent.count;
+                addSessionProperties(
+                    frontmatter,
+                    values,
+                    names,
+                    intent.preserveRevision ? 'off' : api.revisionMode,
+                );
             });
         } finally {
             writing.delete(path);

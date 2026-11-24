@@ -1,7 +1,7 @@
 {
   "id": "revision-marks",
   "name": "Revision Marks",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "minAppVersion": "1.15.0",
   "description": "Beta: Update timestamps and optional revision counts after meaningful editing sessions.",
   "author": "Committed Sins",

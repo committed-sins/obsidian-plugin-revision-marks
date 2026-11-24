@@ -3,7 +3,9 @@ import { DEFAULT_PROPERTIES, normalizeProperties } from './properties.mjs';
 
 export const DEFAULT_SETTINGS = Object.freeze({
     revisionMode: 'counter',
-    countRenames: false,
+    countRenames: true,
+    countLinkUpdates: false,
+    initialRevision: 0,
     excludedFolders: DEFAULT_EXCLUDED_FOLDERS,
     properties: DEFAULT_PROPERTIES,
 });
@@ -37,8 +39,21 @@ export function normalizeSettings(value = {})
         throw new Error('Revision mode must be off or counter.');
     const countRenames = value.countRenames ?? DEFAULT_SETTINGS.countRenames;
     if (typeof countRenames !== 'boolean') throw new Error('Count file renames must be a boolean.');
+    const countLinkUpdates = value.countLinkUpdates ?? DEFAULT_SETTINGS.countLinkUpdates;
+    if (typeof countLinkUpdates !== 'boolean')
+        throw new Error('Count link updates must be a boolean.');
+    const initialRevision = value.initialRevision ?? DEFAULT_SETTINGS.initialRevision;
+    if (
+        !Number.isSafeInteger(initialRevision) || initialRevision < 0 ||
+        initialRevision >= Number.MAX_SAFE_INTEGER
+    )
+        throw new Error(
+            'Initial revision must be a non-negative safe integer below the maximum counter value.',
+        );
     return {
         countRenames,
+        countLinkUpdates,
+        initialRevision,
         excludedFolders: [...new Set(excludedFolders)],
         properties,
         revisionMode,

@@ -21,6 +21,8 @@ export function createSessionTracker({
     hash = sha256,
     report = console.error,
     isEligible = eligibleNote,
+    linkFingerprint,
+    matchesLinkUpdate,
 })
 {
     const sessions = new Map();
@@ -43,6 +45,7 @@ export function createSessionTracker({
             return [{
                 ...(session.record ?? { renameOnly: true }),
                 path,
+                creation: session.creation ?? session.record?.creation,
                 renamedAt: session.renamedAt,
                 renameVersion: session.renameVersion,
             }];
@@ -59,13 +62,14 @@ export function createSessionTracker({
         );
         baselineDirty = false;
     };
-    const remember = (path, contentHash, metadata, mtime) =>
+    const remember = (path, contentHash, metadata, mtime, linkHash) =>
     {
         baselines.set(path, {
             hash: contentHash,
             count: metadata.count,
             updated: metadata.updated,
             mtime,
+            ...(linkHash !== undefined ? { linkHash } : {}),
         });
         baselineDirty = true;
     };
@@ -98,6 +102,7 @@ export function createSessionTracker({
                 record.comparisonVersion ??= 1;
                 sessions.set(record.path, {
                     record: record.renameOnly ? undefined : record,
+                    creation: record.creation,
                     renamedAt: record.renamedAt,
                     renameVersion: record.renameVersion,
                 });
@@ -157,6 +162,7 @@ export function createSessionTracker({
             initial,
             editedAt,
             comparisonVersion,
+            creation: session.creation ?? session.record?.creation,
         };
         session.savedRevision = revision;
     };
@@ -186,21 +192,45 @@ export function createSessionTracker({
             save();
             saveBaselines();
         });
-    const observe = (path, text, mtime) =>
+    const observe = (path, text, mtime, { linkUpdate = false, created = false } = {}) =>
     {
         const location = locationOf(path);
         return enqueue(async () =>
         {
             if (!available || !eligible(path)) return;
             const contentHash = await hash(comparableContent(text, api));
+            const linkHash = await linkFingerprint?.(location.path, text);
             if (!current(location) || !eligible(location.path)) return;
             path = location.path;
             const metadata = metadataOf(text, api);
             const previous = baselines.get(path);
-            const session = sessions.get(path);
+            let session = sessions.get(path);
+            if (created && revisionEnabled(api) && !metadata.hasRevision) {
+                if (session) {
+                    session.creation = true;
+                    if (session.record) session.record.creation = true;
+                } else {
+                    session = {
+                        record: {
+                            path,
+                            baselineHash: previous?.hash ?? contentHash,
+                            latestHash: contentHash,
+                            initial: metadata,
+                            editedAt: Number.isFinite(mtime) ?
+                                new Date(mtime).toISOString() :
+                                now().toISOString(),
+                            comparisonVersion: 2,
+                            source: 'file',
+                            creation: true,
+                        },
+                    };
+                    sessions.set(path, session);
+                }
+                save();
+            }
             if (!previous) {
-                if (session) return; // Its first user transaction supplies the missing pre-image.
-                remember(path, contentHash, metadata, mtime);
+                if (session && !session.record?.creation) return; // Preserve the editor pre-image.
+                remember(path, contentHash, metadata, mtime, linkHash);
                 return;
             }
             if (
@@ -209,13 +239,25 @@ export function createSessionTracker({
                 metadata.updated !== previous.updated
             ) {
                 // Metadata-only changes and already-stamped sync changes do not create another edit.
-                remember(path, contentHash, metadata, mtime);
-                if (session?.record?.source === 'file' && !session.renamedAt) {
+                remember(path, contentHash, metadata, mtime, linkHash);
+                if (
+                    session?.record?.source === 'file' && !session.renamedAt &&
+                    (!session.record.creation || metadata.hasRevision)
+                ) {
                     sessions.delete(path);
                     save();
                 }
                 return;
             }
+            const timestampOnly = api.countLinkUpdates === false &&
+                session?.before === undefined && !session?.renamedAt && (
+                    (session?.record?.timestampOnly === true &&
+                        contentHash === session.record.latestHash) ||
+                    (linkUpdate && await matchesLinkUpdate?.(path, previous.linkHash, linkHash))
+                );
+            // Attribution can yield while a rename or fresh editor input arrives.
+            if (!current(location) || location.path !== path || sessions.get(path) !== session)
+                return;
             if (session?.before !== undefined || session?.renamedAt) return; // Preserve the editor's exact before/after documents.
             const editedAt = new Date(mtime).toISOString();
             sessions.set(path, {
@@ -227,10 +269,23 @@ export function createSessionTracker({
                     editedAt,
                     comparisonVersion: 2,
                     source: 'file',
+                    creation: session?.record?.creation ?? session?.creation,
+                    timestampOnly,
                 },
             });
             save();
         }, location);
+    };
+    const revisionForCompletion = (metadata, record, session, preserveRevision, contentHash) =>
+    {
+        if (!revisionEnabled(api)) return 0;
+        if (record.intent?.count !== undefined) return record.intent.count;
+        if (preserveRevision) return metadata.count;
+        if (metadata.hasRevision) return metadata.count + 1;
+        const initialRevision = api.initialRevision ?? 0;
+        const changedSinceCreation = record.creation &&
+            (contentHash !== record.baselineHash || session.renamedAt);
+        return initialRevision + (changedSinceCreation ? 1 : 0);
     };
     const finish = (path, { force = false, shutdown = false } = {}) =>
     {
@@ -276,17 +331,20 @@ export function createSessionTracker({
                         metadataOf(text, api),
                     editedAt: session.renamedAt,
                     comparisonVersion: 2,
+                    creation: session.creation,
                 };
             }
             const contentHash = await hash(comparableContent(text, api, record.comparisonVersion));
             const canonicalHash = record.comparisonVersion === 2 ?
                 contentHash :
                 await hash(comparableContent(text, api));
+            const linkHash = await linkFingerprint?.(path, text);
             if (!canWrite()) return;
             const metadata = metadataOf(text, api);
             if (
                 record.intent &&
                 metadata.count === record.intent.count &&
+                (!record.intent.addRevision || metadata.hasRevision) &&
                 metadata.updated === record.intent.updated &&
                 (!record.intent.addCreated ||
                     (metadata.hasCreated && metadata.created === record.intent.created))
@@ -303,7 +361,7 @@ export function createSessionTracker({
                         record.initial = metadata;
                         delete record.intent;
                     } else {
-                        remember(path, canonicalHash, metadata, mtime);
+                        remember(path, canonicalHash, metadata, mtime, linkHash);
                         sessions.delete(path);
                         save();
                         saveBaselines();
@@ -319,8 +377,11 @@ export function createSessionTracker({
                     delete record.intent;
                 }
             }
-            if (contentHash === record.baselineHash && !session.renamedAt) {
-                remember(path, canonicalHash, metadata, mtime);
+            if (
+                contentHash === record.baselineHash && !session.renamedAt &&
+                !(record.creation && !metadata.hasRevision)
+            ) {
+                remember(path, canonicalHash, metadata, mtime, linkHash);
                 sessions.delete(path);
                 save();
                 saveBaselines();
@@ -330,7 +391,7 @@ export function createSessionTracker({
                 metadata.count !== record.initial.count ||
                 metadata.updated !== record.initial.updated
             ) {
-                remember(path, canonicalHash, metadata, mtime);
+                remember(path, canonicalHash, metadata, mtime, linkHash);
                 sessions.delete(path);
                 save();
                 saveBaselines();
@@ -342,6 +403,15 @@ export function createSessionTracker({
                     `Edit sessions: ${path} changed externally without a known mtime; pending session retained.`,
                 );
             }
+            const preserveRevision = record.timestampOnly === true &&
+                contentHash === record.latestHash && session.before === undefined &&
+                !session.renamedAt;
+            // New genuine edits supersede a timestamp-only intention not yet applied.
+            if (record.intent?.preserveRevision && !preserveRevision) delete record.intent;
+            // An unapplied initialization may now include the first real edit (or its undo).
+            if (record.creation && record.intent?.addRevision && !metadata.hasRevision)
+                delete record.intent;
+            record.timestampOnly = preserveRevision;
             record.latestHash = contentHash;
             const contentTime = Number.isFinite(mtime) && mtime > 0 ?
                 mtime :
@@ -357,7 +427,15 @@ export function createSessionTracker({
             // Compare instants, not timezone spellings; never move a valid stamp backwards.
             // Compare the formatted value so sub-second mtime differences don't cause rewrites.
             record.intent = {
-                count: revisionEnabled(api) ? (record.intent?.count ?? metadata.count + 1) : 0,
+                count: revisionForCompletion(
+                    metadata,
+                    record,
+                    session,
+                    preserveRevision,
+                    contentHash,
+                ),
+                preserveRevision,
+                addRevision: revisionEnabled(api) && !preserveRevision && !metadata.hasRevision,
                 updated: updateTimestamp ? proposed : metadata.updated,
                 updateTimestamp,
                 renameVersion: session.renameVersion,
@@ -371,6 +449,11 @@ export function createSessionTracker({
                     }),
                 ) :
                 canonicalHash;
+            record.intent.postCommitLinkHash = record.intent.addCreated ?
+                await linkFingerprint?.(path, text, {
+                    [propertyNames(api).created]: record.intent.created,
+                }) :
+                linkHash;
             if (!Number.isSafeInteger(record.intent.count))
                 throw new Error('updated_count overflow');
             save(); // Write-ahead record: retry must never increment twice.
@@ -384,7 +467,13 @@ export function createSessionTracker({
             // A host write can finish after another rename. Keep its canonical location.
             const committedPath = location.path;
             if (!current(location)) return;
-            remember(committedPath, record.intent.postCommitHash, record.intent, mtime);
+            remember(
+                committedPath,
+                record.intent.postCommitHash,
+                record.intent,
+                mtime,
+                record.intent.postCommitLinkHash,
+            );
             if (session.renameVersion === record.intent.renameVersion) delete session.renamedAt;
             if (session.revision === revision) sessions.delete(committedPath);
             else {

@@ -84,7 +84,8 @@ async function fixture(run)
         extension,
         saves = 0,
         writes = 0,
-        runtime;
+        runtime,
+        mode = 'source';
     const view = {
         file,
         dirty: false,
@@ -92,6 +93,7 @@ async function fixture(run)
         lastSavedData: disk,
         savePromise: null,
         editor: { getValue: () => buffer },
+        getMode: () => mode,
         getViewData: () => modeData,
         // Model TextFileView.save: the view mode, not editor.getValue(), supplies the write.
         async save()
@@ -164,10 +166,10 @@ async function fixture(run)
             },
         },
     };
-    const edit = () =>
+    const edit = (after = note('edited body must survive')) =>
     {
         const before = buffer;
-        buffer = modeData = note('edited body must survive');
+        buffer = modeData = after;
         view.dirty = true;
         extension({
             docChanged: true,
@@ -209,6 +211,16 @@ async function fixture(run)
                     view.data =
                     view.lastSavedData =
                         text;
+            },
+            setMode: (value) =>
+            {
+                mode = value;
+                callbacks.get('workspace:layout-change')();
+            },
+            setDisk: (text) =>
+            {
+                disk = text;
+                file.stat.mtime += 1000;
             },
             clearMode: () =>
             {
@@ -849,4 +861,190 @@ test('unexcluded Templater source produces neither notices nor metadata writes a
         assert.equal(f.writes(), 1);
         assert.equal(JSON.parse(info(f.disk()).frontmatter).revision, 2);
     });
+});
+
+test('switching to reading completes saved changes once, while returning to source cancels a pending boundary', async () =>
+{
+    await fixture(async (f) =>
+    {
+        f.edit();
+        await f.view.save();
+        f.setMode('preview');
+        await wait(220);
+        assert.equal(f.writes(), 1);
+        assert.equal(JSON.parse(info(f.disk()).frontmatter).revision, 2);
+        f.setMode('preview');
+        await wait(180);
+        assert.equal(f.writes(), 1);
+        f.setMode('source');
+        f.edit(f.disk() + ' more');
+        await f.view.save();
+        f.setMode('preview');
+        f.setMode('source');
+        await wait(180);
+        assert.equal(f.writes(), 1);
+        assert.equal(f.pending().length, 1);
+        f.setMode('preview');
+        await wait(220);
+        assert.equal(f.writes(), 2);
+    });
+});
+
+test('reading mode preserves unchanged/undone sessions and waits for native persistence', async () =>
+{
+    await fixture(async (f) =>
+    {
+        const before = f.disk();
+        f.setMode('preview');
+        await wait(180);
+        assert.equal(f.writes(), 0);
+        f.setMode('source');
+        f.edit();
+        f.edit(before);
+        await f.view.save();
+        f.setMode('preview');
+        await wait(180);
+        assert.equal(f.writes(), 0);
+        f.setMode('source');
+        f.edit();
+        f.setMode('preview');
+        await wait(180);
+        assert.equal(f.writes(), 0);
+        await f.view.save();
+        f.callbacks.get('vault:modify')(f.view.file);
+        await wait(100);
+        assert.equal(f.writes(), 1);
+    });
+});
+
+test('Properties edits in reading view complete even with an absent or stale hidden editor', async () =>
+{
+    await fixture(async (f) =>
+    {
+        await f.complete(); // Establish the known baseline.
+        f.setMode('preview');
+        f.view.editor = undefined;
+        const changed = f.disk().replace('"revision":1', '"revision":1,"tags":["reading"]');
+        f.setDisk(changed);
+        f.callbacks.get('vault:modify')(f.view.file);
+        await wait(100);
+        assert.equal(f.writes(), 1);
+        assert.equal(JSON.parse(info(f.disk()).frontmatter).revision, 2);
+        assert.deepEqual(JSON.parse(info(f.disk()).frontmatter).tags, ['reading']);
+    });
+});
+
+test('a second source view of the same file prevents reading-mode completion', async () =>
+{
+    await fixture(async (f) =>
+    {
+        f.edit();
+        await f.view.save();
+        const second = { ...f.view, getMode: () => 'source' };
+        f.app.workspace.iterateAllLeaves = (callback) =>
+        {
+            callback({ view: f.view });
+            callback({ view: second });
+        };
+        f.setMode('preview');
+        await wait(220);
+        assert.equal(f.writes(), 0);
+        second.getMode = () => 'preview';
+        f.callbacks.get('workspace:layout-change')();
+        await wait(220);
+        assert.equal(f.writes(), 1);
+    });
+});
+
+test('native link-update events wait for fresh metadata and respect the independent revision option', async () =>
+{
+    for (const countLinkUpdates of [false, true]) {
+        await fixture(async (f) =>
+        {
+            await f.end();
+            f.api.countLinkUpdates = countLinkUpdates;
+            const source = f.view.file,
+                target = { path: 'docs/Old.md', extension: 'md', stat: { mtime: 1 } };
+            let reference = '[[Old]]';
+            const cache = () =>
+            {
+                const start = f.disk().indexOf(reference);
+                return {
+                    links: [{
+                        original: reference,
+                        link: reference.slice(2, -2),
+                        position: {
+                            start: { offset: start },
+                            end: { offset: start + reference.length },
+                        },
+                    }],
+                };
+            };
+            let currentCache;
+            f.app.metadataCache = {
+                resolvedLinks: { [source.path]: { [target.path]: 1 } },
+                on(event, callback)
+                {
+                    f.callbacks.set('metadata:' + event, callback);
+                    return 'metadata:' + event;
+                },
+                offref(key)
+                {
+                    f.callbacks.delete(key);
+                },
+                getFileCache: (file) => file === source ? currentCache : {},
+                getFirstLinkpathDest: (link) =>
+                    link + '.md' === target.path.split('/').at(-1) ? target : null,
+            };
+            f.app.vault.getAbstractFileByPath = (path) =>
+                path === source.path ? source : path === target.path ? target : null;
+            f.app.vault.read = async (file) => file === source ? f.disk() : note('target');
+            f.setContent(note('Link: [[Old]]'));
+            currentCache = cache();
+            f.start();
+            await f.complete();
+            const oldPath = target.path;
+            target.path = 'docs/New.md';
+            f.callbacks.get('vault:rename')(target, oldPath);
+            f.setContent(note('Link: [[New]]'));
+            f.callbacks.get('vault:modify')(source);
+            await wait(50);
+            if (!countLinkUpdates)
+                assert.deepEqual(f.pending(), [], 'stale cache must not invent an edit');
+            reference = '[[New]]';
+            currentCache = cache();
+            f.callbacks.get('metadata:changed')?.(source);
+            await f.complete();
+            assert.equal(f.writes(), 1);
+            assert.equal(JSON.parse(info(f.disk()).frontmatter).revision, countLinkUpdates ? 2 : 1);
+        });
+    }
+});
+
+test('vault create initializes at zero without interrupting typing; the first edit finishes at one', async () =>
+{
+    for (const editBeforeCompletion of [false, true]) {
+        await fixture(async (f) =>
+        {
+            f.setContent('new note');
+            await f.callbacks.get('vault:create')(f.view.file);
+            assert.equal(f.writes(), 0, 'do not stamp while the note is actively being edited');
+            if (editBeforeCompletion) {
+                f.edit('first edit');
+                await f.view.save();
+            }
+            await f.complete();
+            assert.equal(
+                JSON.parse(info(f.disk()).frontmatter).revision,
+                editBeforeCompletion ? 1 : 0,
+            );
+            f.edit(f.disk() + ' later edit');
+            await f.view.save();
+            await f.complete();
+            assert.equal(
+                JSON.parse(info(f.disk()).frontmatter).revision,
+                editBeforeCompletion ? 2 : 1,
+            );
+        });
+    }
 });

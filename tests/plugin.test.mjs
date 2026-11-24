@@ -121,6 +121,9 @@ test('standalone lifecycle waits for layout, supplies its own owner, and complet
     await f.ready();
     assert.equal(f.events[0][0], 'start');
     assert.equal(f.events[0][1].owner, f.plugin);
+    assert.equal(f.events[0][1].initialRevision, 0);
+    assert.equal(f.events[0][1].countRenames, true);
+    assert.equal(f.events[0][1].countLinkUpdates, false);
     assert.deepEqual(f.events[0][1].excludedFolders, []);
     assert.deepEqual(f.events[0][1].properties, {
         created: 'created',
@@ -211,7 +214,14 @@ test('invalid settings fail without starting or overwriting recovery state', asy
         revision: 'revision',
     });
     assert.equal(normalizeSettings().revisionMode, 'counter');
-    assert.equal(normalizeSettings().countRenames, false);
+    assert.equal(normalizeSettings().countRenames, true);
+    assert.equal(normalizeSettings().countLinkUpdates, false);
+    assert.equal(normalizeSettings().initialRevision, 0);
+    for (const initialRevision of [0, 10000])
+        assert.equal(normalizeSettings({ initialRevision }).initialRevision, initialRevision);
+    for (const initialRevision of [-1, 0.5, NaN, '0', Number.MAX_SAFE_INTEGER])
+        assert.throws(() => normalizeSettings({ initialRevision }), /Initial revision/);
+    assert.throws(() => normalizeSettings({ countLinkUpdates: 'false' }), /boolean/);
     assert.equal(normalizeSettings({ countRenames: true }).countRenames, true);
     assert.throws(() => normalizeSettings({ countRenames: 'true' }), /boolean/);
     assert.equal(normalizeSettings({ revisionMode: 'off' }).revisionMode, 'off');
@@ -335,8 +345,12 @@ test('revision dropdown defaults to Counter and applies Off with a disabled prop
         'redrawing discards unsaved edits',
     );
     const rename = controls.get('Count file renames as revisions');
-    assert.equal(rename.value, false);
+    assert.equal(rename.value, true);
     rename.change(true);
+    const links = controls.get('Count automatic link updates as revisions');
+    assert.equal(links.value, false);
+    links.change(false);
+    controls.get('Initial revision').change('10000');
     const mode = controls.get('Mode'),
         name = controls.get('Revision property');
     assert.equal(mode.value, 'counter');
@@ -344,10 +358,14 @@ test('revision dropdown defaults to Counter and applies Off with a disabled prop
     mode.change('off');
     assert.equal(name.disabled, true);
     assert.equal(rename.disabled, true);
+    assert.equal(links.disabled, true);
+    assert.equal(controls.get('Initial revision').disabled, true);
     assert.equal(f.plugin.settings.revisionMode, 'counter');
     await controls.get('Apply settings').click();
     assert.equal(f.plugin.settings.revisionMode, 'off');
     assert.equal(f.plugin.settings.countRenames, true);
+    assert.equal(f.plugin.settings.countLinkUpdates, false);
+    assert.equal(f.plugin.settings.initialRevision, 10000);
     assert.equal(f.events.at(-1)[1].countRenames, true);
     assert.equal(f.events.at(-1)[1].revisionMode, 'off');
     await f.plugin.onunload();

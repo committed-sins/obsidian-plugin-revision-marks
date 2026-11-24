@@ -1,3 +1,4 @@
+import { createLinkUpdateClassifier } from './link-updates.mjs';
 import { registerSaveCommand } from './save-command.mjs';
 import { DEFAULT_EXCLUDED_FOLDERS, eligibleNote } from './note-paths.mjs';
 import { comparableContent } from './note-content.mjs';
@@ -38,6 +39,7 @@ export function startEditSessions(app, api)
         quitPromise;
     let checkpointTimer, leavingTimer, initializationTimer;
     const completionRequests = new Set();
+    const newFiles = new Set();
     const deferred = (message) =>
         Object.assign(new Error(message), { code: 'SESSION_MARKS_DEFERRED' });
     const assertRunning = (shutdown = false) =>
@@ -64,13 +66,18 @@ export function startEditSessions(app, api)
     const writing = new Set();
     const isActive = (path) => app.workspace.getActiveFile()?.path === path;
     const recoveringPaths = new Set();
-    const isSessionActive = (path) => isActive(path) && !recoveringPaths.has(path);
+    const isSessionActive = (path) =>
+        isActive(path) &&
+        viewsFor(path).some((view) => view.getMode?.() !== 'preview') && !recoveringPaths.has(path);
     const viewsFor = (path) =>
     {
         const views = [];
         app.workspace.iterateAllLeaves((leaf) =>
         {
-            if (leaf.view.file?.path === path && leaf.view.editor) views.push(leaf.view);
+            if (
+                leaf.view.file?.path === path &&
+                (leaf.view.editor || leaf.view.getMode?.() === 'preview')
+            ) views.push(leaf.view);
         });
         return views;
     };
@@ -91,6 +98,9 @@ export function startEditSessions(app, api)
         deferred,
     });
     const { waitForNativeSave, checkViews } = noteAccess;
+    const linkUpdates = api.countLinkUpdates === false && api.revisionMode !== 'off' ?
+        createLinkUpdateClassifier({ app, api }) :
+        null;
     const tracker = createSessionTracker({
         api,
         storage: globalThis.localStorage,
@@ -101,6 +111,8 @@ export function startEditSessions(app, api)
         exists: (path) => Boolean(fileAt(path)),
         read: noteAccess.read,
         write: noteAccess.write,
+        linkFingerprint: linkUpdates?.fingerprint,
+        matchesLinkUpdate: linkUpdates?.matches,
     });
     const scheduleCheckpoint = () =>
     {
@@ -141,7 +153,8 @@ export function startEditSessions(app, api)
         leavingTimer = setTimeout(() =>
         {
             if (stopped || closing || suspended) return;
-            for (const path of tracker.paths()) if (!isActive(path)) void tracker.finish(path);
+            for (const path of tracker.paths())
+                if (!isSessionActive(path)) void tracker.finish(path);
         }, 150);
     };
     const observeFile = (file) =>
@@ -155,9 +168,21 @@ export function startEditSessions(app, api)
                 const text = await app.vault.read(fileAt(path));
                 if (!fileAt(path)) return;
                 const mtime = fileAt(path)?.stat?.mtime;
-                await tracker.observe(path, text, Number.isFinite(mtime) ? mtime : Date.now());
+                const linkUpdate = linkUpdates?.isPending(path) ?? false;
+                // Wait for matching indexed offsets instead of guessing from stale links.
+                // Quit recovery remains conservative if indexing never catches up.
+                if (linkUpdate && !linkUpdates.ready(path, text)) return;
+                await tracker.observe(path, text, Number.isFinite(mtime) ? mtime : Date.now(), {
+                    linkUpdate,
+                    created: newFiles.has(path),
+                });
+                if (tracker.baseline(path)) newFiles.delete(path);
+                linkUpdates?.complete(path);
                 scheduleCheckpoint();
-                if (!closing && !suspended && (!isActive(path) || completionRequests.has(path))) {
+                if (
+                    !closing && !suspended &&
+                    (!isSessionActive(path) || completionRequests.has(path))
+                ) {
                     await tracker.finish(path, { force: completionRequests.has(path) });
                     if (!tracker.paths().includes(path)) completionRequests.delete(path);
                 }
@@ -207,7 +232,20 @@ export function startEditSessions(app, api)
         return flushQueue;
     }
     refs.push([app.vault, app.vault.on('modify', observeFile)]);
-    refs.push([app.vault, app.vault.on('create', observeFile)]);
+    refs.push([
+        app.vault,
+        app.vault.on('create', (file) =>
+        {
+            if (file && eligible(file.path)) newFiles.add(file.path);
+            return observeFile(file);
+        }),
+    ]);
+    if (linkUpdates && app.metadataCache?.on) {
+        refs.push([
+            app.metadataCache,
+            app.metadataCache.on('changed', (file) => observeFile(file)),
+        ]);
+    }
     refs.push([app.workspace, app.workspace.on('active-leaf-change', scheduleInactiveCompletion)]);
     refs.push([app.workspace, app.workspace.on('file-open', scheduleInactiveCompletion)]);
     refs.push([app.workspace, app.workspace.on('layout-change', scheduleInactiveCompletion)]);
@@ -215,7 +253,8 @@ export function startEditSessions(app, api)
         app.vault,
         app.vault.on('rename', (file, oldPath) =>
         {
-            for (const paths of [completionRequests, recoveringPaths]) {
+            linkUpdates?.rename(file, oldPath);
+            for (const paths of [completionRequests, recoveringPaths, newFiles]) {
                 for (const path of [...paths]) {
                     if (path === oldPath || path.startsWith(oldPath + '/')) {
                         paths.delete(path);
@@ -234,6 +273,8 @@ export function startEditSessions(app, api)
         app.vault,
         app.vault.on('delete', (file) =>
         {
+            for (const path of newFiles)
+                if (path === file.path || path.startsWith(file.path + '/')) newFiles.delete(path);
             void tracker.remove(file.path);
         }),
     ]);
@@ -265,7 +306,10 @@ export function startEditSessions(app, api)
                     if (!file) continue;
                     const text = await app.vault.read(file);
                     checkViews(path, text, undefined, true);
-                    await tracker.observe(path, text, file.stat?.mtime);
+                    await tracker.observe(path, text, file.stat?.mtime, {
+                        linkUpdate: linkUpdates?.isPending(path) ?? false,
+                        created: newFiles.has(path),
+                    });
                 } catch (error) {
                     report(error);
                 }
@@ -352,7 +396,10 @@ export function startEditSessions(app, api)
             if (!eligible(path)) continue;
             const file = fileAt(path);
             const baseline = tracker.baseline(path);
-            if (!baseline || baseline.mtime !== file?.stat?.mtime) await observeFile(file);
+            if (
+                !baseline || baseline.mtime !== file?.stat?.mtime ||
+                (linkUpdates && !baseline.linkHash)
+            ) await observeFile(file);
             if (++batch % 16 === 0) await new Promise((resolve) => setTimeout(resolve, 20));
             if (batch % 128 === 0) await tracker.checkpoint();
         }

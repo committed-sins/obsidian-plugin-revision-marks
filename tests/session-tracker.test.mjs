@@ -92,9 +92,9 @@ function fixture({ excludedFolders = [] } = {})
         {
             active = 'notes/B.md';
         },
-        failAfterWrite: () =>
+        failAfterWrite: (value = true) =>
         {
-            failAfterWrite = true;
+            failAfterWrite = value;
         },
     };
 }
@@ -185,7 +185,7 @@ test('excluded folders are not tracked, while the vault root is', async () =>
     f.tracker.change('Root.md', 'old', 'new');
     f.leave();
     await f.tracker.finish('Root.md');
-    assert.equal(properties(f.files.get('Root.md')).updated_count, 1);
+    assert.equal(properties(f.files.get('Root.md')).updated_count, 0);
 });
 
 test('fresh defaults track notes in all formerly prefilled folders', async () =>
@@ -198,7 +198,7 @@ test('fresh defaults track notes in all formerly prefilled folders', async () =>
     for (const path of paths) {
         f.edit(note('changed'), path);
         await f.tracker.finish(path);
-        assert.equal(properties(f.files.get(path)).updated_count, 1);
+        assert.equal(properties(f.files.get(path)).updated_count, 0);
     }
     assert.deepEqual(f.writes, paths);
     assert.deepEqual(f.errors, []);
@@ -447,7 +447,7 @@ test('changing plugin exclusions skips previously stored sessions and baselines 
     filtered.change('Root.md', 'before', 'after');
     f.files.set('Root.md', 'after');
     await filtered.finish('Root.md');
-    assert.equal(properties(f.files.get('Root.md')).updated_count, 1);
+    assert.equal(properties(f.files.get('Root.md')).updated_count, 0);
     assert.equal(f.errors.length, 0);
 });
 
@@ -744,4 +744,152 @@ test('YAML errors do not leak parser excerpts or block checkpoints and recovery 
     f.edit(note('repaired body', initial));
     await f.tracker.finish('notes/A.md', { force: true });
     assert.equal(properties(f.files.get('notes/A.md')).updated_count, 8);
+});
+
+test('missing counters use initial revision 0, 1 or 10000, then increment; recovery never duplicates the first value', async () =>
+{
+    for (const initialRevision of [0, 1, 10000]) {
+        const f = fixture();
+        const fm = { ...initial };
+        delete fm.updated_count;
+        const before = note('new', fm), after = note('first edit', fm);
+        f.files.set('notes/A.md', after);
+        const options = { ...f.options, api: { ...api, initialRevision } };
+        const tracker = createSessionTracker(options);
+        tracker.change('notes/A.md', before, after);
+        f.failAfterWrite();
+        await tracker.finish('notes/A.md', { force: true });
+        assert.equal(properties(f.files.get('notes/A.md')).updated_count, initialRevision);
+        const recovered = createSessionTracker(options);
+        await recovered.finish('notes/A.md', { force: true });
+        assert.equal(f.writes.length, 1);
+        const stamped = f.files.get('notes/A.md'), next = stamped + ' continued';
+        recovered.change('notes/A.md', stamped, next);
+        f.files.set('notes/A.md', next);
+        await recovered.finish('notes/A.md', { force: true });
+        assert.equal(properties(f.files.get('notes/A.md')).updated_count, initialRevision + 1);
+    }
+});
+
+test('initial zero is written even if an interrupted intention has not yet inserted the missing property', async () =>
+{
+    const f = fixture();
+    const fm = { ...initial, updated: '2099-01-01T00:00:00Z' };
+    delete fm.updated_count;
+    const before = note('before', fm), after = note('changed', fm);
+    f.files.set('notes/A.md', after);
+    const tracker = createSessionTracker({
+        ...f.options,
+        api: { ...api, initialRevision: 0 },
+        write: async () =>
+        {
+            throw new Error('interrupted before applying the write');
+        },
+    });
+    tracker.change('notes/A.md', before, after);
+    await tracker.finish('notes/A.md', { force: true });
+    assert.equal(Object.hasOwn(properties(f.files.get('notes/A.md')), 'updated_count'), false);
+    const recovered = createSessionTracker({ ...f.options, api: { ...api, initialRevision: 0 } });
+    await recovered.finish('notes/A.md', { force: true });
+    assert.equal(properties(f.files.get('notes/A.md')).updated_count, 0);
+    assert.equal(f.writes.length, 1);
+});
+
+test('new-file creation initializes zero and the first later edit becomes one; existing counters remain unchanged', async () =>
+{
+    const f = fixture();
+    const path = 'notes/New.md', created = note('initial content');
+    f.files.set(path, created);
+    await f.tracker.observe(path, created, 1794398400000, { created: true });
+    await f.tracker.observe(path, created, 1794398400000); // Duplicate modify must retain initialization.
+    await f.tracker.finish(path, { force: true });
+    assert.equal(properties(f.files.get(path)).updated_count, 0);
+    const stamped = f.files.get(path), after = stamped + ' edit';
+    f.tracker.change(path, stamped, after);
+    f.files.set(path, after);
+    await f.tracker.finish(path, { force: true });
+    assert.equal(properties(f.files.get(path)).updated_count, 1);
+    const preset = note('prefilled', { ...initial, updated_count: 10000 });
+    f.files.set('notes/Preset.md', preset);
+    await f.tracker.observe('notes/Preset.md', preset, 1, { created: true });
+    await f.tracker.finish('notes/Preset.md', { force: true });
+    assert.equal(f.files.get('notes/Preset.md'), preset);
+    assert.deepEqual(f.errors, []);
+});
+
+test('an edit before new-file initialization completes starts at one; undo retains the creation value', async () =>
+{
+    for (const undo of [false, true]) {
+        const f = fixture(), path = 'notes/New.md', created = note('created');
+        f.files.set(path, created);
+        await f.tracker.observe(path, created, 1794398400000, { created: true });
+        f.tracker.change(path, created, created + ' edit');
+        f.files.set(path, created + ' edit');
+        if (undo) {
+            f.tracker.change(path, created + ' edit', created);
+            f.files.set(path, created);
+        }
+        await f.tracker.finish(path, { force: true });
+        assert.equal(properties(f.files.get(path)).updated_count, undo ? 0 : 1);
+        assert.deepEqual(f.errors, []);
+    }
+});
+
+test('creation before-image survives editor/observe ordering and interrupted initialization', async () =>
+{
+    const f = fixture(),
+        path = 'notes/New.md',
+        created = note('created'),
+        changed = created + ' edit';
+    f.files.set(path, changed);
+    f.tracker.change(path, created, changed); // Native create read completes after the first editor transaction.
+    await f.tracker.observe(path, changed, 1794398400000, { created: true });
+    await f.tracker.checkpoint();
+    f.failAfterWrite();
+    await f.tracker.finish(path, { force: true });
+    assert.equal(properties(f.files.get(path)).updated_count, 1);
+    const recovered = createSessionTracker(f.options);
+    await recovered.finish(path, { force: true });
+    assert.equal(f.writes.length, 1);
+    assert.deepEqual(recovered.paths(), []);
+});
+
+test('an unapplied creation intention is recalculated if the first edit arrives before retry', async () =>
+{
+    const f = fixture(), path = 'notes/New.md', created = note('created');
+    let fail = true;
+    const options = {
+        ...f.options,
+        write: async (...args) =>
+        {
+            if (fail) throw new Error('initial creation stamp deferred');
+            return f.options.write(...args);
+        },
+    };
+    const tracker = createSessionTracker(options);
+    f.files.set(path, created);
+    await tracker.observe(path, created, 1, { created: true });
+    await tracker.finish(path, { force: true });
+    tracker.change(path, created, created + ' first edit');
+    f.files.set(path, created + ' first edit');
+    fail = false;
+    await tracker.finish(path, { force: true });
+    assert.equal(properties(f.files.get(path)).updated_count, 1);
+    assert.equal(f.writes.length, 1);
+});
+
+test('unchanged new-note initialization recovers zero exactly once after an interrupted write', async () =>
+{
+    const f = fixture(), path = 'notes/New.md', created = note('created');
+    f.files.set(path, created);
+    await f.tracker.observe(path, created, 1, { created: true });
+    await f.tracker.checkpoint();
+    f.failAfterWrite();
+    const first = createSessionTracker(f.options);
+    await first.finish(path, { force: true });
+    const recovered = createSessionTracker(f.options);
+    await recovered.finish(path, { force: true });
+    assert.equal(properties(f.files.get(path)).updated_count, 0);
+    assert.equal(f.writes.length, 1);
+    assert.deepEqual(recovered.paths(), []);
 });

@@ -9,6 +9,8 @@ export class RevisionMarksSettingsTab extends PluginSettingTab
     draft = null;
     revisionNameInput = null;
     renameToggle = null;
+    linkUpdateToggle = null;
+    initialRevisionInput = null;
 
     display()
     {
@@ -19,9 +21,13 @@ export class RevisionMarksSettingsTab extends PluginSettingTab
             properties: { ...this.plugin.settings.properties },
             revisionMode: this.plugin.settings.revisionMode,
             countRenames: this.plugin.settings.countRenames,
+            countLinkUpdates: this.plugin.settings.countLinkUpdates,
+            initialRevision: this.plugin.settings.initialRevision,
         };
         this.revisionNameInput = null;
         this.renameToggle = null;
+        this.linkUpdateToggle = null;
+        this.initialRevisionInput = null;
 
         this.renderIntroduction();
         this.renderTimestampSettings();
@@ -35,7 +41,7 @@ export class RevisionMarksSettingsTab extends PluginSettingTab
         {
             setting.setName('BETA · Track editing sessions, not autosaves');
             setting.setDesc(
-                'Timestamps and optional revision counts update when you leave or explicitly save a note.\n' +
+                'Timestamps and optional revision counts update when you leave, switch to reading view or explicitly save a note.\n' +
                     'Unchanged content and complete undo produce no update, keeping metadata writes out of your typing flow.',
             );
         });
@@ -59,7 +65,9 @@ export class RevisionMarksSettingsTab extends PluginSettingTab
         group.addSetting((setting) =>
             this.renderPropertyName(setting, 'revision', 'Revision property')
         );
+        group.addSetting((setting) => this.renderInitialRevision(setting));
         group.addSetting((setting) => this.renderRenameSetting(setting));
+        group.addSetting((setting) => this.renderLinkUpdateSetting(setting));
     }
 
     renderRenameSetting(setting)
@@ -80,6 +88,44 @@ export class RevisionMarksSettingsTab extends PluginSettingTab
         });
     }
 
+    renderInitialRevision(setting)
+    {
+        setting.setName('Initial revision');
+        setting.setDesc(
+            'Starting value for newly created notes. Subsequent content edits add one. Missing counters on existing notes use this value on their next completed change.',
+        );
+        setting.addText((input) =>
+        {
+            this.initialRevisionInput = input;
+            input.setValue(String(this.draft.initialRevision));
+            input.setDisabled(this.draft.revisionMode === 'off');
+            input.onChange((value) =>
+            {
+                this.draft.initialRevision = /^\d+$/.test(value.trim()) ?
+                    Number(value.trim()) :
+                    NaN;
+            });
+        });
+    }
+
+    renderLinkUpdateSetting(setting)
+    {
+        setting.setName('Count automatic link updates as revisions');
+        setting.setDesc(
+            'Off updates only the timestamp for confirmed automatic link rewrites. Additional content edits and uncertain attribution still count.',
+        );
+        setting.addToggle((toggle) =>
+        {
+            this.linkUpdateToggle = toggle;
+            toggle.setValue(this.draft.countLinkUpdates);
+            toggle.setDisabled(this.draft.revisionMode === 'off');
+            toggle.onChange((value) =>
+            {
+                this.draft.countLinkUpdates = value;
+            });
+        });
+    }
+
     renderRevisionMode(setting)
     {
         setting.setName('Mode');
@@ -96,6 +142,8 @@ export class RevisionMarksSettingsTab extends PluginSettingTab
                 this.draft.revisionMode = value;
                 this.revisionNameInput?.setDisabled(value === 'off');
                 this.renameToggle?.setDisabled(value === 'off');
+                this.linkUpdateToggle?.setDisabled(value === 'off');
+                this.initialRevisionInput?.setDisabled(value === 'off');
             });
         });
     }
