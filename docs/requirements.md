@@ -44,3 +44,10 @@ No revision-content history, remote service, analytics, replacement of an existi
 ## New-note initialization
 
 A native vault create event marks a new note for counter initialization at the next safe completion boundary. Startup scans and first observations of existing files do not initialize counters. An unchanged new note receives the configured initial value (default 0); a subsequent actual content change or counted rename advances it by one, including before the initial metadata write. Existing preset counters remain untouched on creation. Duplicate native events and recovery retain the initialization decision without resetting or double-counting. Unrendered template headers remain deferred until valid content becomes available; no write is made into active typing buffers.
+
+
+## Protected and excluded paths
+
+Hidden/system paths and the vault's configured configuration directory are always ineligible, even if the user exclusion list is empty. Folder entries are rooted at the vault root; a leading `**/` matches the named folder at any depth, including root, and all descendants are excluded. Trailing `/` or `/**` is optional; other wildcard syntax is not supported.
+
+One-time setup adds only the configured attachment-folder rule if missing, including to existing or empty exclusion lists. A fixed folder becomes a root-relative exclusion; a note-relative folder (`./_assets`) becomes `**/_assets`. Root and same-as-note attachment locations never exclude all note directories. Existing user-defined entries remain intact and equivalent normalized rules are deduplicated. Setup completion is persisted; later deliberate removals are respected. Unavailable configuration leaves setup pending for a later attempt. Matchers are prepared once per runtime without per-file configuration reads.

@@ -1,6 +1,6 @@
-# Beta testing
+# Manual testing
 
-Test disposable notes before enabling Revision Marks in a working vault. Disable any other automatic writer of the same timestamp/revision properties first. Android support is declared, but live Android validation is still pending; synthetic tests do not establish real lifecycle behavior.
+Test disposable notes before enabling Revision Marks in a working vault. Disable any other automatic writer of the same timestamp/revision properties first.
 
 1. Edit a note, then leave it: expect one timestamp update and one increment in Counter mode. Save unchanged content or completely undo an edit: expect no metadata write.
 2. Use Save current file / Ctrl+S: expect one completion. Continue typing, save again: expect another. Repeated unchanged saves do nothing.

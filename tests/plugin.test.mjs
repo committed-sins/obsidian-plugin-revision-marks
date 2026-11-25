@@ -204,7 +204,7 @@ test('unload invalidates the runtime synchronously before awaiting restart work'
 test('invalid settings fail without starting or overwriting recovery state', async () =>
 {
     const f = fixture({ excludedFolders: ['../other-vault'] });
-    await assert.rejects(f.plugin.onload(), /relative vault folders/);
+    await assert.rejects(f.plugin.onload(), /vault-relative paths/);
     assert.equal(f.events.length, 0);
     assert.equal(f.notices.length, 1);
     assert.deepEqual(normalizeSettings({ excludedFolders: [] }).excludedFolders, []);
@@ -432,4 +432,118 @@ test('built entry exports an Obsidian plugin with only Obsidian/CodeMirror runti
     assert.equal(typeof module.exports.default, 'function');
     assert.ok(new module.exports.default() instanceof api.Plugin);
     assert.deepEqual([...new Set(requireCalls)].sort(), ['@codemirror/view', 'obsidian']);
+});
+
+test('setup persists the configured attachment exclusion and initializes it once', async () =>
+{
+    const f = fixture();
+    f.plugin.app.vault = {
+        configDir: 'preferences',
+        adapter: {
+            read: async (path) =>
+            {
+                assert.equal(path, 'preferences/app.json');
+                return JSON.stringify({ attachmentFolderPath: './_assets' });
+            },
+        },
+    };
+    await f.plugin.onload();
+    await f.ready();
+    assert.deepEqual(f.plugin.settings.excludedFolders, ['**/_assets']);
+    assert.deepEqual(f.events[0][1].excludedFolders, ['**/_assets']);
+    assert.equal(f.events[0][0], 'save-settings');
+    assert.equal(f.events[0][1].attachmentExclusionsInitialized, true);
+    await f.plugin.onunload();
+});
+
+test('setup appends only the configured attachment rule to existing lists', async () =>
+{
+    for (const excludedFolders of [[], ['private', '**/media']]) {
+        const f = fixture({ excludedFolders });
+        let reads = 0;
+        f.plugin.app.vault = {
+            adapter: {
+                read: async () =>
+                {
+                    reads++;
+                    return JSON.stringify({ attachmentFolderPath: './_assets' });
+                },
+            },
+        };
+        await f.plugin.onload();
+        assert.deepEqual(f.plugin.settings.excludedFolders, [...excludedFolders, '**/_assets']);
+        assert.equal(reads, 1);
+        assert.equal(f.events[0][1].attachmentExclusionsInitialized, true);
+        await f.plugin.onunload();
+    }
+});
+
+test('setup deduplicates normalized attachment rules and does not restore deliberate removals', async () =>
+{
+    const f = fixture({ excludedFolders: ['private', '**/_assets/'] });
+    f.plugin.app.vault = {
+        adapter: { read: async () => JSON.stringify({ attachmentFolderPath: './_assets' }) },
+    };
+    await f.plugin.onload();
+    await f.ready();
+    assert.deepEqual(f.plugin.settings.excludedFolders, ['private', '**/_assets']);
+    await f.plugin.applySettings({ ...f.plugin.settings, excludedFolders: [] });
+    const persisted = f.events.filter((event) => event[0] === 'save-settings').at(-1)[1];
+    assert.equal(persisted.attachmentExclusionsInitialized, true);
+    const restarted = fixture(persisted);
+    let reads = 0;
+    restarted.plugin.app.vault = {
+        adapter: {
+            read: async () =>
+            {
+                reads++;
+                return '{}';
+            },
+        },
+    };
+    await restarted.plugin.onload();
+    assert.deepEqual(restarted.plugin.settings.excludedFolders, []);
+    assert.equal(reads, 0);
+    assert.equal(restarted.events.length, 0);
+    await restarted.plugin.onunload();
+    await f.plugin.onunload();
+});
+
+test('setup handles all four attachment modes and retries if configuration was unavailable', async () =>
+{
+    for (
+        const [attachmentFolderPath, expected] of [
+            ['attachments', ['attachments']],
+            ['./media', ['**/media']],
+            ['', []],
+            ['.', []],
+        ]
+    ) {
+        const f = fixture();
+        f.plugin.app.vault = {
+            adapter: { read: async () => JSON.stringify({ attachmentFolderPath }) },
+        };
+        await f.plugin.onload();
+        assert.deepEqual(f.plugin.settings.excludedFolders, expected);
+        assert.equal(f.events[0][1].attachmentExclusionsInitialized, true);
+        await f.plugin.onunload();
+    }
+    const f = fixture();
+    let unavailable = true;
+    f.plugin.app.vault = {
+        adapter: {
+            read: async () =>
+            {
+                if (unavailable) throw new Error('temporarily unavailable');
+                return JSON.stringify({ attachmentFolderPath: './_assets' });
+            },
+        },
+    };
+    await f.plugin.loadSettings();
+    assert.equal(f.plugin.attachmentExclusionsInitialized, false);
+    assert.equal(f.events.length, 0);
+    unavailable = false;
+    await f.plugin.loadSettings();
+    assert.deepEqual(f.plugin.settings.excludedFolders, ['**/_assets']);
+    assert.equal(f.events.length, 1);
 });

@@ -10,12 +10,13 @@ import {
 import { EditorView } from '@codemirror/view';
 import { startEditSessions } from './obsidian-runtime.mjs';
 import { RevisionMarksSettingsTab } from './settings-tab.mjs';
-import { normalizeSettings } from './settings.mjs';
+import { attachmentDefaults, normalizeSettings } from './settings.mjs';
 
 /** Owns Obsidian registrations, persisted settings and serialized runtime restarts. */
 export default class RevisionMarksPlugin extends Plugin
 {
     settings = normalizeSettings();
+    attachmentExclusionsInitialized = false;
     /** @type {import('./obsidian-runtime.mjs').TrackingRuntime | null} */
     runtime = null;
     restartQueue = Promise.resolve();
@@ -36,10 +37,32 @@ export default class RevisionMarksPlugin extends Plugin
         try {
             const saved = await this.loadData();
             this.settings = normalizeSettings(saved ?? {});
+            this.attachmentExclusionsInitialized = saved?.attachmentExclusionsInitialized === true;
+            if (!this.attachmentExclusionsInitialized) {
+                const attachments = await attachmentDefaults(this.app.vault);
+                if (attachments !== null) {
+                    this.settings = normalizeSettings({
+                        ...this.settings,
+                        excludedFolders: [...this.settings.excludedFolders, ...attachments],
+                    });
+                    this.attachmentExclusionsInitialized = true;
+                    await this.persistSettings(this.settings);
+                }
+            }
         } catch (error) {
             new Notice(`Revision Marks did not start: ${error.message}`, 10000);
             throw error;
         }
+    }
+
+    persistSettings(settings)
+    {
+        return this.saveData({
+            ...settings,
+            ...(this.attachmentExclusionsInitialized ?
+                { attachmentExclusionsInitialized: true } :
+                {}),
+        });
     }
 
     registerCommands()
@@ -147,7 +170,7 @@ export default class RevisionMarksPlugin extends Plugin
                         'Complete them before changing these settings.',
                 );
             }
-            await this.saveData(settings);
+            await this.persistSettings(settings);
             this.settings = settings;
         });
 

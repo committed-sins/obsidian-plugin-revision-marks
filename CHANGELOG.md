@@ -1,6 +1,15 @@
 # Changelog
 
-## 0.1.10 - Beta
+## 0.1.11
+
+- Explicitly protect hidden/system paths and the configured Obsidian configuration directory, independently of user exclusions.
+- Support `**/folder/` exclusions at any depth, including the vault root. Plain folder paths remain rooted at the vault root; every folder rule includes its descendants.
+- During one-time setup, add only the configured attachment-folder rule if missing: a fixed path remains rooted, while `./_assets` becomes `**/_assets`. Root/same-as-note locations add nothing. Preserve user rules, deduplicate equivalent normalized entries and respect subsequent deliberate removals; retry setup if configuration is temporarily unavailable.
+- Keep tracking strictly limited to `.md` files.
+- Use neutral release, settings and manifest text, and rename the manual testing guide.
+- Validate formatting, build and all 113 automated tests, including folder boundaries, attachment-location modes, setup persistence and non-Markdown files.
+
+## 0.1.10
 
 - Complete saved, changed sessions when switching from editing to reading view. Properties edits in reading view are still tracked; an open source view of the same active note keeps the session open.
 - Start newly created notes at revision 0 by default. The first subsequent content edit becomes 1, including edits before the initial metadata write. Initialize only at safe session boundaries; preserve existing counters and allow a custom starting value.
@@ -10,14 +19,14 @@
 - Extend journal/recovery guards for initialization, timestamp-only link sessions, duplicate events and genuine edits arriving during retries. Validate formatting, build and all 103 automated tests.
 - Keep additional revision formats, including semantic versions, on the roadmap for a later release.
 
-## 0.1.9 - Beta
+## 0.1.9
 
 - Defer unrendered Templater frontmatter without parsing or modifying template source files.
 - Isolate malformed frontmatter during checkpoints so other notes remain recoverable.
 - Report invalid YAML with the note path and no private parser excerpts.
 - Simplify README notices and add a direct issue-reporting link.
 
-## 0.1.8 — Beta
+## 0.1.8
 
 - Keep pending sessions and recovery paths attached to renamed files, including renames during hashing, reads and writes.
 - Add optional "Count file renames as revisions", off by default; combine content edits and file renames in one session and recover without duplicate increments.
@@ -26,9 +35,9 @@
 - Preserve every existing saved exclusion list and the ability to configure root folders and their descendants.
 - Verify both the empty new-install UI/runtime and unchanged loading of existing settings.
 
-## 0.1.7 — Beta
+## 0.1.7
 
-- Prepare the first installable beta with MIT licensing and visible beta identification.
+- Prepare the first installable release with MIT licensing.
 - Shorten the README around behavior, installation and essential settings; move implementation and compatibility details into focused guides.
 - Include the license in the built plugin so installed copies retain the copyright and permission notice.
 - Retain the existing session, timestamp, optional counter and recovery behavior. Community-directory submission is performed by the repository owner.

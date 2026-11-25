@@ -1,4 +1,8 @@
-import { DEFAULT_EXCLUDED_FOLDERS } from './note-paths.mjs';
+import {
+    attachmentFolderExclusions,
+    DEFAULT_EXCLUDED_FOLDERS,
+    normalizeExcludedFolder,
+} from './note-paths.mjs';
 import { DEFAULT_PROPERTIES, normalizeProperties } from './properties.mjs';
 
 export const DEFAULT_SETTINGS = Object.freeze({
@@ -21,18 +25,8 @@ export function normalizeSettings(value = {})
         ),
     ];
     const excludedFolders = list(value.excludedFolders, DEFAULT_SETTINGS.excludedFolders).map(
-        (folder) => folder.replaceAll('\\', '/').replace(/\/+$/, ''),
+        normalizeExcludedFolder,
     );
-    if (
-        excludedFolders.some(
-            (folder) =>
-                folder.startsWith('/') ||
-                folder.includes(':') ||
-                folder.split('/').some((part) => !part || part === '.' || part === '..'),
-        )
-    ) {
-        throw new Error('Excluded folders must be relative vault folders, one per line.');
-    }
     const properties = normalizeProperties(value.properties);
     const revisionMode = value.revisionMode ?? DEFAULT_SETTINGS.revisionMode;
     if (!['off', 'counter'].includes(revisionMode))
@@ -58,4 +52,18 @@ export function normalizeSettings(value = {})
         properties,
         revisionMode,
     };
+}
+
+/** Read setup defaults once; null means configuration is unavailable and setup should retry. */
+export async function attachmentDefaults(vault)
+{
+    if (!vault?.adapter?.read) return null;
+    try {
+        const configDir = vault.configDir ?? '.obsidian';
+        const config = JSON.parse(await vault.adapter.read(configDir + '/app.json'));
+        return attachmentFolderExclusions(config.attachmentFolderPath);
+    } catch {
+        // Missing/unreadable optional configuration must not prevent tracking.
+        return null;
+    }
 }

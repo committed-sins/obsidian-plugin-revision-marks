@@ -39,7 +39,7 @@ export class RevisionMarksSettingsTab extends PluginSettingTab
     {
         new SettingGroup(this.containerEl).addSetting((setting) =>
         {
-            setting.setName('BETA · Track editing sessions, not autosaves');
+            setting.setName('Track editing sessions, not autosaves');
             setting.setDesc(
                 'Timestamps and optional revision counts update when you leave, switch to reading view or explicitly save a note.\n' +
                     'Unchanged content and complete undo produce no update, keeping metadata writes out of your typing flow.',
@@ -177,7 +177,7 @@ export class RevisionMarksSettingsTab extends PluginSettingTab
     {
         setting.setName('Excluded folders');
         setting.setDesc(
-            'One vault-relative folder per line. Each folder and its subfolders are excluded.',
+            'One folder per line, including its subfolders. Use **/_assets/ for that folder at any depth. Hidden/system folders are always ignored.',
         );
         setting.addTextArea((input) =>
         {
